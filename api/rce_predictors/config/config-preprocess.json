@@ -1,0 +1,7 @@
+{
+    "0": {
+        "name": "pipeline-preprocess.pkl",
+        "reversed": "pipeline-preprocess-reversed.pkl",
+        "fit": false
+    }
+}

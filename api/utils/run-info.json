@@ -1,0 +1,30 @@
+{
+    "temperature": {
+        "model-name": "modelo.keras",
+        "input": 24,
+        "output": 8,
+        "shift": 8,
+        "labels": ["cold", "hot"],
+        "column-indices": {
+            "cold": 0,
+            "hot": 1,
+            "reset_cold": 2,
+            "reset_hot": 3,
+            "mode": 4,
+            "wind_vel_m_s": 5,
+            "solar_rad_w_m2": 6,
+            "ir_rad_w_m2": 7,
+            "day sin": 8,
+            "day cos": 9,
+            "year sin": 10,
+            "year cos": 11
+        }
+    },
+    "demand": {
+        "filepath": "rce_predictors/config/demand-house.txt"
+    },
+    "rce-specs": {
+        "volume_cold": 0.05,
+        "volume_hot": 0.15
+    }
+}

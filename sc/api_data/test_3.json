@@ -1,0 +1,268 @@
+{
+  "data": [
+  {
+    "cold": 7,
+    "hot": 7,
+    "wind_vel_m_s": 9.19,
+    "solar_rad_w_m2": 955.46,
+    "ir_rad_w_m2": 267.94,
+    "day_sin": 0.78,
+    "day_cos": 0.93,
+    "year_sin": -0.19,
+    "year_cos": -0.99
+  },
+  {
+    "cold": 5,
+    "hot": 1,
+    "wind_vel_m_s": 2.84,
+    "solar_rad_w_m2": 38.36,
+    "ir_rad_w_m2": 275.81,
+    "day_sin": 0.11,
+    "day_cos": 0.56,
+    "year_sin": 0.57,
+    "year_cos": 0.25
+  },
+  {
+    "cold": 2,
+    "hot": 7,
+    "wind_vel_m_s": 1.86,
+    "solar_rad_w_m2": 650.68,
+    "ir_rad_w_m2": 397.67,
+    "day_sin": 0.01,
+    "day_cos": -0.71,
+    "year_sin": 0.57,
+    "year_cos": -0.19
+  },
+  {
+    "cold": 3,
+    "hot": 8,
+    "wind_vel_m_s": 6.05,
+    "solar_rad_w_m2": 600.64,
+    "ir_rad_w_m2": 699.63,
+    "day_sin": 0.3,
+    "day_cos": -0.88,
+    "year_sin": -0.7,
+    "year_cos": -0.23
+  },
+  {
+    "cold": 2,
+    "hot": 2,
+    "wind_vel_m_s": 6.41,
+    "solar_rad_w_m2": 602.66,
+    "ir_rad_w_m2": 643.88,
+    "day_sin": 0.87,
+    "day_cos": 0.84,
+    "year_sin": -0.3,
+    "year_cos": 0.67
+  },
+  {
+    "cold": 3,
+    "hot": 10,
+    "wind_vel_m_s": 2.88,
+    "solar_rad_w_m2": 799.95,
+    "ir_rad_w_m2": 7.18,
+    "day_sin": -0.51,
+    "day_cos": 0.67,
+    "year_sin": -0.34,
+    "year_cos": -0.97
+  },
+  {
+    "cold": 10,
+    "hot": 4,
+    "wind_vel_m_s": 2.55,
+    "solar_rad_w_m2": 239.98,
+    "ir_rad_w_m2": 18.89,
+    "day_sin": -0.54,
+    "day_cos": 0.51,
+    "year_sin": -0.33,
+    "year_cos": -0.35
+  },
+  {
+    "cold": 9,
+    "hot": 4,
+    "wind_vel_m_s": 3.08,
+    "solar_rad_w_m2": 551.78,
+    "ir_rad_w_m2": 695.43,
+    "day_sin": -0.13,
+    "day_cos": 0.44,
+    "year_sin": 0.89,
+    "year_cos": 0.8
+  },
+  {
+    "cold": 8,
+    "hot": 7,
+    "wind_vel_m_s": 2.12,
+    "solar_rad_w_m2": 733.02,
+    "ir_rad_w_m2": 220.23,
+    "day_sin": 0.76,
+    "day_cos": -0.82,
+    "year_sin": -0.16,
+    "year_cos": 0.99
+  },
+  {
+    "cold": 2,
+    "hot": 5,
+    "wind_vel_m_s": 0.28,
+    "solar_rad_w_m2": 251.68,
+    "ir_rad_w_m2": 0.63,
+    "day_sin": -1,
+    "day_cos": -0.28,
+    "year_sin": -0.79,
+    "year_cos": -0.78
+  },
+  {
+    "cold": 0,
+    "hot": 4,
+    "wind_vel_m_s": 5.68,
+    "solar_rad_w_m2": 940.91,
+    "ir_rad_w_m2": 952.58,
+    "day_sin": 0.31,
+    "day_cos": 0.24,
+    "year_sin": -0.85,
+    "year_cos": 0.61
+  },
+  {
+    "cold": 0,
+    "hot": 2,
+    "wind_vel_m_s": 8.58,
+    "solar_rad_w_m2": 785.62,
+    "ir_rad_w_m2": 12.96,
+    "day_sin": -0.21,
+    "day_cos": -0.13,
+    "year_sin": 0.93,
+    "year_cos": -0.32
+  },
+  {
+    "cold": 3,
+    "hot": 6,
+    "wind_vel_m_s": 1.31,
+    "solar_rad_w_m2": 134.25,
+    "ir_rad_w_m2": 22.76,
+    "day_sin": 0.83,
+    "day_cos": -0.55,
+    "year_sin": -0.1,
+    "year_cos": 0.32
+  },
+  {
+    "cold": 5,
+    "hot": 3,
+    "wind_vel_m_s": 0.88,
+    "solar_rad_w_m2": 149.64,
+    "ir_rad_w_m2": 64.13,
+    "day_sin": 0.79,
+    "day_cos": -0.33,
+    "year_sin": -0.61,
+    "year_cos": -0.89
+  },
+  {
+    "cold": 8,
+    "hot": 2,
+    "wind_vel_m_s": 0.76,
+    "solar_rad_w_m2": 689.64,
+    "ir_rad_w_m2": 579.53,
+    "day_sin": 0.31,
+    "day_cos": -0.86,
+    "year_sin": 0.18,
+    "year_cos": 0.78
+  },
+  {
+    "cold": 3,
+    "hot": 2,
+    "wind_vel_m_s": 1.36,
+    "solar_rad_w_m2": 547.17,
+    "ir_rad_w_m2": 859.86,
+    "day_sin": 0.83,
+    "day_cos": -0.61,
+    "year_sin": 0.17,
+    "year_cos": -0.75
+  },
+  {
+    "cold": 1,
+    "hot": 1,
+    "wind_vel_m_s": 0.6,
+    "solar_rad_w_m2": 212.38,
+    "ir_rad_w_m2": 539.31,
+    "day_sin": 0.23,
+    "day_cos": 0.32,
+    "year_sin": 0.04,
+    "year_cos": 0.51
+  },
+  {
+    "cold": 10,
+    "hot": 7,
+    "wind_vel_m_s": 9.57,
+    "solar_rad_w_m2": 374.41,
+    "ir_rad_w_m2": 40.84,
+    "day_sin": 0.87,
+    "day_cos": 0.85,
+    "year_sin": -0.45,
+    "year_cos": -0.3
+  },
+  {
+    "cold": 5,
+    "hot": 10,
+    "wind_vel_m_s": 0.22,
+    "solar_rad_w_m2": 594.79,
+    "ir_rad_w_m2": 410.81,
+    "day_sin": 0.36,
+    "day_cos": 0.21,
+    "year_sin": 0.18,
+    "year_cos": 0.32
+  },
+  {
+    "cold": 8,
+    "hot": 3,
+    "wind_vel_m_s": 2.43,
+    "solar_rad_w_m2": 667.13,
+    "ir_rad_w_m2": 811.15,
+    "day_sin": -0.31,
+    "day_cos": -0.24,
+    "year_sin": -0.99,
+    "year_cos": -0.29
+  },
+  {
+    "cold": 9,
+    "hot": 3,
+    "wind_vel_m_s": 9.81,
+    "solar_rad_w_m2": 125.36,
+    "ir_rad_w_m2": 629.22,
+    "day_sin": 0.33,
+    "day_cos": -0.45,
+    "year_sin": -0.43,
+    "year_cos": -0.03
+  },
+  {
+    "cold": 2,
+    "hot": 4,
+    "wind_vel_m_s": 3.81,
+    "solar_rad_w_m2": 397.54,
+    "ir_rad_w_m2": 67.56,
+    "day_sin": 0.19,
+    "day_cos": 0.1,
+    "year_sin": 0.97,
+    "year_cos": -0.56
+  },
+  {
+    "cold": 4,
+    "hot": 2,
+    "wind_vel_m_s": 8.64,
+    "solar_rad_w_m2": 786.3,
+    "ir_rad_w_m2": 293.23,
+    "day_sin": 0.76,
+    "day_cos": -0.6,
+    "year_sin": -0.26,
+    "year_cos": 0.63
+  },
+  {
+    "cold": 3,
+    "hot": 7,
+    "wind_vel_m_s": 5.55,
+    "solar_rad_w_m2": 743.33,
+    "ir_rad_w_m2": 217.89,
+    "day_sin": 0.45,
+    "day_cos": -0.18,
+    "year_sin": -0.55,
+    "year_cos": -0.18
+  }
+  ]
+}

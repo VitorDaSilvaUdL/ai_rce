@@ -1,0 +1,12 @@
+{
+    "0": {
+        "name": "pipeline-data-manipulation.pkl",
+        "reversed": null,
+        "fit": false
+    },
+    "1": {
+        "name": "pipeline-preprocess.pkl",
+        "reversed": "pipeline-preprocess-reversed.pkl",
+        "fit": false
+    }
+}
