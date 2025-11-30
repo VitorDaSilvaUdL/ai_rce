@@ -1,0 +1,24 @@
+{
+  "predict_url": "http://localhost:8000/predict",
+  "sc": {
+    "iteration_time_in_minutes": 15,
+    "lect_dir" : "C:\\Users\\Usuari\\Documents\\RCE\\Lecturas0.csv",
+    "solar_dir" : "C:\\Users\\Usuari\\Documents\\RCE\\Solarimeter0.csv",
+    "ir_dir" : "C:\\Users\\Usuari\\Documents\\RCE\\Pyrgeometer0.csv"
+},
+  "plc": {
+    "ip": "127.0.0.1",
+    "rack": 0,
+    "slot": 1
+  },
+  "pump": {
+    "power_watts": 10,
+    "min_time_step_minutes": 15
+  },
+  "paths": {
+    "data_dir": "data",
+    "output_csv": "dades.csv"
+  },
+  "test_mode": false,
+  "log_level": "INFO"
+}

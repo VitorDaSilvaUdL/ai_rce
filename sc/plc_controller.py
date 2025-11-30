@@ -44,6 +44,9 @@ SystemCase = {
     ("A", "MM", "MM", "MP", "MM", "MM"): "ColdMode1",
     ("MM", "MM", "MM", "MP", "MM", "MM"): "ColdMode2",
 
+     ("A",  "MM", "MM", "MP", "MP", "MP"): "ColdMode1",  # ← NUEVA
+     ("MM", "MM", "MM", "MP", "MP", "MP"): "ColdMode2",  # ← NUEVA
+
     # Modo diurno
     ("A", "MP", "MP", "MM", "MP", "MP"): "HeatMode1",
     ("MM", "MP", "MP", "MM", "MP", "MP"): "HeatMode2",

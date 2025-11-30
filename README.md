@@ -74,3 +74,35 @@ flowchart TD
     I3 --> Z
 ```
 
+
+
+```
+Preguntar Albert
+# ---------------------------------------------------------------------------
+# Mapa lógico de variables -> VarName(s) reales + CSV donde buscar
+#   source: ruta completa al CSV
+#   varnames: lista de posibles nombres en la columna VarName
+# ---------------------------------------------------------------------------
+VARIABLE_SOURCES = {
+    "hot": {
+        "varnames": ["TempT6_RCEa", "TempT6_RCEa_v2"],
+        "source": lect_dir,   # temperatura caliente
+    },
+    "cold": {
+        "varnames": ["TempT9_RCEa", "TempT9_RCEa_v2"],
+        "source": lect_dir,   # temperatura fría
+    },
+    "v_vent": {
+        "varnames": ["VelVent_RCEa", "VelVent_RCEa_v2"],
+        "source": lect_dir,   # velocidad viento
+    },
+    "solar": {
+        "varnames": ["IO_SENSOR1_DATA_RCEa"],
+        "source": solar_dir,  # radiación solar
+    },
+    "ir": {
+        "varnames": ["E_FIR, neto, [W/m2]_RCEb"],
+        "source": ir_dir,     # radiación IR neta
+    },
+}
+```

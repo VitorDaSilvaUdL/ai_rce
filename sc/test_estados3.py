@@ -54,6 +54,15 @@ class App(tk.Tk):
         self.btn_frio = ttk.Button(frm_states, text="Frío", width=14, command=self.set_frio)
         self.btn_calor = ttk.Button(frm_states, text="Calor", width=14, command=self.set_calor)
         self.btn_parada = ttk.Button(frm_states, text="Parada", width=14, command=self.set_parada)
+        
+        #NUEVO BOTÓN PARA CAPTURAR ESTADO
+        self.btn_capturar = ttk.Button(
+            frm_states,
+            text="Capturar estado",
+            width=18,
+            command=self.capture_state,   
+        )
+        self.btn_capturar.grid(row=1, column=0, columnspan=4, padx=8, pady=6)
 
         self.btn_auto.grid(row=0, column=0, padx=8, pady=6)
         self.btn_frio.grid(row=0, column=1, padx=8, pady=6)
@@ -106,6 +115,76 @@ class App(tk.Tk):
             self.btn_connect.configure(text="Conectar")
             self._update_state_buttons()
 
+    
+    def capture_state(self):
+        """
+        Lee el estado actual del PLC y lo muestra:
+          - En consola: cada booleano + DB/byte/bit
+          - En una ventana: estado lógico y modo simple (get_current_mode)
+        """
+        self._require_connection()
+
+        try:
+            # 1) Leer diccionario de actuadores
+            act = self.plc.read_actuators_state()
+
+            # 2) Reconstruir estado lógico y modo simple
+            estado_sistema, _ = self.plc.get_system_state()
+            modo_simple = self.plc.get_current_mode()
+
+            # 3) Mapa de variables -> (DB, byte, bit)
+            mapping = {
+                # B1 [DB500]
+                "ActManB1":      (500, 12, 0),
+                "ActManMarxaB1": (500, 12, 1),
+
+                # B2 [DB501]
+                "ActManB2":      (501, 12, 0),
+                "ActManMarxaB2": (501, 12, 1),
+
+                # EV1 [DB300]
+                "ActManEV1":      (300, 10, 0),
+                "ActManMarxaEV1": (300, 10, 1),
+                "ActManStopEV1":  (300, 10, 2),
+
+                # EV2 [DB301]
+                "ActManEV2":      (301, 10, 0),
+                "ActManMarxaEV2": (301, 10, 1),
+                "ActManStopEV2":  (301, 10, 2),
+
+                # Tapa Horizontal [DB503]
+                "ActManTH":      (503, 12, 0),
+                "ActManMarxaTH": (503, 12, 1),
+                #Falta INVERSO TH
+
+                # Tapa Vertical [DB504]
+                "ActManTV":      (504, 12, 0),
+                "ActManMarxaTV": (504, 12, 1),
+                #Falta INVERSO TV
+            }
+
+            print("\n================= CAPTURA DE ESTADO PLC =================")
+            for nombre, (db, byte, bit) in mapping.items():
+                valor = act.get(nombre)
+                print(f"{nombre:15s} = {str(valor):5s}   (DB{db}.DBX{byte}.{bit})")
+            print("---------------------------------------------------------")
+            print(f"SystemCase detectado: {estado_sistema}")
+            print(f"get_current_mode():   {modo_simple}")
+            print("=========================================================\n")
+
+            # 4) Ventanita informativa
+            from tkinter import messagebox
+            messagebox.showinfo(
+                "Estado actual",
+                f"SystemCase: {estado_sistema}\n"
+                f"Modo simple: {modo_simple}"
+            )
+
+        except Exception as e:
+            from tkinter import messagebox
+            messagebox.showerror("Error", f"No se pudo capturar el estado: {e}")
+
+
     # ----------------------------------------------------------------------
     # Ejecutor no bloqueante
     # ----------------------------------------------------------------------
@@ -147,7 +226,7 @@ class App(tk.Tk):
 
     def _update_state_buttons(self):
         state = tk.NORMAL if self.connected.get() else tk.DISABLED
-        for btn in (self.btn_auto, self.btn_frio, self.btn_calor, self.btn_parada):
+        for btn in (self.btn_auto, self.btn_frio, self.btn_calor, self.btn_parada, self.btn_capturar):
             btn.configure(state=state)
 
     def on_close(self):

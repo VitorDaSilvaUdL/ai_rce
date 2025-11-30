@@ -1,3 +1,4 @@
+import sys
 import asyncio
 import os
 import random
@@ -13,17 +14,29 @@ from fastapi import FastAPI
 from sc.utils.read_data import get_last_data_from_db
 from .plc_controller import PLCController
 
+from sc.config import (
+    PREDICT_URL, P_BOMBA_WATTS, MIN_TIME_STEP,
+    PLC_IP, PLC_RACK, PLC_SLOT, OUTPUT_CSV, ITER_TIME_SEC
+)
+
 import logging
 logger = logging.getLogger(__name__)
 
-url = "http://localhost:8000/predict"
+logger.setLevel(logging.DEBUG)
 
-action = 0  # 0 = Tancat | 1 = Obert (Bomba OFF | Bomba ON)
-mode = "hot"  # Mode inicial, pot ser "cold" o "hot" pero se cambia automatico con la conexion del plc
+# url = "http://localhost:8000/predict"
+# action = 0  # 0 = Tancat | 1 = Obert (Bomba OFF | Bomba ON)
+# mode = "hot"  # Mode inicial, pot ser "cold" o "hot" pero se cambia automatico con la conexion del plc
+# P_bomba_watts = 10  # Potència de la bomba en Watts (W)
+# min_time_step = 15  # Durada del time_step en minuts
+# time_step_hours = min_time_step / 60  # Durada del time_step en hores per al càlcul d'energia
 
-P_bomba_watts = 10  # Potència de la bomba en Watts (W)
-min_time_step = 15  # Durada del time_step en minuts
-time_step_hours = min_time_step / 60  # Durada del time_step en hores per al càlcul d'energia
+url = PREDICT_URL
+P_bomba_watts = P_BOMBA_WATTS  # Potència de la bomba en Watts (W)
+min_time_step = MIN_TIME_STEP # Durada del time_step en minuts
+time_step_hours = int(ITER_TIME_SEC) / 60  # Durada del time_step en hores per al càlcul d'energia
+
+plc = PLCController(ip=PLC_IP, rack=PLC_RACK, slot=PLC_SLOT)
 
 prod_data = {}
 dem_data = {}
@@ -37,9 +50,6 @@ last_prediction_update_day = None
 current_dem_target = 0.0
 selected_time_frames = []
 total_predicted_production = 0.0
-
-# # Si es vol guardar dades del sistema al csv s'ha d'afegir el parametre --> FastAPI(lifespan=lifespan)
-# app = FastAPI()
 
 # Funció per calcular la demanda
 def calculate_dem_for_period(df_demand, start_dt, end_dt):
@@ -125,15 +135,6 @@ def get_now_on():
             return {"yes": "hot" if temp_mode[time_frame_dt] else "cold"}
     return "no"
 
-
-# Funcio de test
-# @app.get("/decision-")
-def false_decide():
-    import random
-
-    return {"respuesta" : "Parada"}
-    return {"respuesta" : random.choice(["yes", "no", "Parada"])}
-
 def rodona_15_minuts_avall(dt):
     minuts = (dt.minute // 15) * 15
     return dt.replace(minute=0, second=0, microsecond=0) + timedelta(minutes=minuts)
@@ -161,172 +162,6 @@ def get_now_val_2(curr: dict):
         if now.hour == frame.hour and frame.minute == 0 and now.day == frame.day or frame.hour == left.hour and frame.minute == 59 and now.day == frame.day:
             return curr[(frame + timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%S") ]
     return 0
-
-# Endpoint per aconseguir la decisió
-def get_decision_old():
-    global system_data, last_prediction_update_day, total_predicted_production, selected_time_frames, current_dem_target, dem_data, prod_data, action, mode
-    now = datetime.now().replace(microsecond=0)
-    system_data = get_last_data_from_db()
-    print(f"\n{now}: Nou cicle de control.")
-
-    l = []
-    l.append(datetime.now())
-
-    if now.day != last_prediction_update_day and now.hour == 0 and now.minute == 0:
-        print(f"{now}: Iniciant actualització diària de prediccions.")
-        req = get_req(url, system_data)
-        dem_data = get_dem(req)
-        prod_data = get_prod(req)
-        rain_data = get_rain(req)
-        last_prediction_update_day = now.day
-        print(f"{now}: Prediccions actualitzades per al dia {last_prediction_update_day}.")
-
-    # Calcular nou horari de calor
-    if now.hour == 7 and 0 <= now.minute < 15:
-        req = get_req(url, system_data)
-        dem_data = get_dem(req)
-        prod_data = get_prod(req)
-        rain_data = get_rain(req)
-        last_prediction_update_day = now.day
-        print(f"{now}: Planificant demanda de calor.")
-        start_dem_heat = now.replace(hour=12, minute=0, second=0, microsecond=0)
-        end_dem_heat = (now + timedelta(days=1)).replace(hour=12, minute=0, second=0, microsecond=0)
-        dem_c = calculate_dem_for_period(dem_data['hot_dem'], start_dem_heat, end_dem_heat)
-
-        selected_time_frames, total_predicted_production = calculate_optimal_production_plan(prod_data['hot'], dem_c,1)
-        current_dem_target = dem_c
-        print(f"{now}: Mode establert a HOT. Demanda de calor objectiu: {current_dem_target:.2f} Wh. Producció prevista per cobrir-la: {total_predicted_production:.2f} Wh.")
-        if total_predicted_production == -1:
-            print(f"{now}: No s’ha pogut trobar un pla òptim per a la demanda de calor. Demanda: {dem_c:.2f} Wh.")
-        else:
-            print(f"{now}: Franges horàries seleccionades per a calor: {[dt.isoformat(timespec='seconds') for dt in selected_time_frames]}")
-
-    # Calcular nou horari de fred
-    if now.hour == 19 and 0 <= now.minute < 15:
-        req = get_req(url, system_data)
-        dem_data = get_dem(req)
-        prod_data = get_prod(req)
-        rain_data = get_rain(req)
-        last_prediction_update_day = now.day
-        print(f"{now}: Planificant demanda de fred.")
-        start_dem_cool = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
-        end_dem_cool = (now + timedelta(days=2)).replace(hour=0, minute=0, second=0, microsecond=0)
-        dem_f = calculate_dem_for_period(dem_data['cold_dem'], start_dem_cool, end_dem_cool)
-
-        selected_time_frames, total_predicted_production = calculate_optimal_production_plan(prod_data['cold'], dem_f,0)
-        current_dem_target = dem_f
-        print(f"{now}: Mode establert a COLD. Demanda de fred objectiu: {current_dem_target:.2f} Wh. Producció prevista per cobrir-la: {total_predicted_production:.2f} Wh.")
-        if total_predicted_production == -1:
-            print(f"{now}: No s’ha pogut trobar un pla òptim per a la demanda de fred. Demanda: {dem_f:.2f} Wh.")
-        else:
-            print(f"{now}: Franges horàries seleccionades per a fred: {[dt.isoformat(timespec='seconds') for dt in selected_time_frames]}")
-
-    print(f"{now}: Lògica de control en temps real. Demanda objectiu actual: {current_dem_target:.2f} Wh.")
-
-    # Si la producció és insuficient no generem
-    if total_predicted_production == -1 and current_dem_target > 0:
-        l.append(0)
-        action = 2
-        print(f"{now}: No hi ha producció prevista suficient per cobrir la demanda. Bomba OFF.")
-
-    else:
-        # Busquem en totes les franjes horaries
-        found_active_time_frame = False
-        current_time_frame_start = now.replace(minute=now.minute - (now.minute % min_time_step), second=0, microsecond=0)
-        current_time_frame_end = current_time_frame_start + timedelta(minutes=min_time_step)
-        print(f"{now}: Franja horària actual a avaluar: {current_time_frame_start.isoformat(timespec='seconds')} a {current_time_frame_end.isoformat(timespec='seconds')}")
-        for time_frame_dt in temp_mode.keys():
-            frame_end_dt = time_frame_dt + timedelta(minutes=min_time_step)
-            if time_frame_dt <= now < frame_end_dt:
-                # S'ha trobat que estem en una franja horaria activa
-                found_active_time_frame = True
-                print(f"{now}: La franja horària actual ({now.isoformat(timespec='seconds')}) està activa per a l’operació.")
-
-                current_frame_prod_value = 0
-                current_frame_str = time_frame_dt.isoformat(timespec='seconds')
-                curr_mode = "hot" if temp_mode[time_frame_dt] else "cold"
-                if curr_mode == "hot" and current_frame_str in prod_data['hot']:
-                    current_frame_prod_value = float(prod_data['hot'][current_frame_str])
-                    print(f"{now}: Producció de calor prevista per a aquesta franja: {current_frame_prod_value:.2f} Wh.")
-                elif curr_mode == "cold" and current_frame_str in prod_data['cold']:
-                    current_frame_prod_value = float(prod_data['cold'][current_frame_str])
-                    print(f"{now}: Producció de fred prevista per a aquesta franja: {current_frame_prod_value:.2f} Wh.")
-                else:
-                    print(f"{now}: No s’han trobat dades de producció per a la franja actual en el mode {curr_mode}.")
-
-                energy_consumed_pump_wh = P_bomba_watts * time_step_hours
-                print(f"{now}: Energia que consumirà la bomba si està ON: {energy_consumed_pump_wh:.2f} Wh.")
-
-                if energy_consumed_pump_wh > 0:
-                    COP = current_frame_prod_value / energy_consumed_pump_wh
-                    print(f"{now}: COP calculat: {COP:.2f}.")
-                else:
-                    COP = 0
-                    print(f"{now}: Energia consumida per la bomba és zero, COP establert a 0.")
-
-                if True:
-                    print("curr_mode:", curr_mode)
-                    action = 1 if curr_mode != mode else 0
-                    mode = curr_mode
-                    Ttank = 1
-                    print(f"{now}: COP és >= 1. Bomba ON. Ttank = {Ttank}.")
-                else:
-                    action = 2
-                    print(f"{now}: COP és < 1. Bomba OFF.")
-                break
-
-
-        l.append(found_active_time_frame)
-        if not found_active_time_frame:
-            action = 2
-            print(f"{now}: L’hora actual no està dins de les franges seleccionades. Bomba OFF.")
-
-        if current_dem_target > 0:
-            old_dem_target = current_dem_target
-            current_dem_target = verify_and_adjust_demand(current_dem_target)
-            print(f"{now}: Demanda restant ajustada de {old_dem_target:.2f} Wh a {current_dem_target:.2f} Wh.")
-            if current_dem_target <= 0:
-                selected_time_frames = []
-                total_predicted_production = 0.0
-                current_dem_target = 0.0
-                action = 0
-                print(f"{now}: Demanda coberta o esgotada. Reiniciant pla i bomba OFF.")
-        else:
-            action = 0
-            print(f"{now}: No hi ha demanda objectiu pendent. Bomba OFF.")
-
-
-    l.append(current_dem_target)
-    l.append("Parada" if action == 2 else {"yes" if action else "no"})
-    l.append(mode)
-    l.append(get_now_val(prod_data['hot']))
-    l.append(get_now_val(prod_data['cold']))
-    l.append(get_now_val_2(dem_data['hot_dem']))
-    l.append(get_now_val_2(dem_data['cold_dem']))
-    es_nou_fitxer = not os.path.exists("dades.csv") or os.path.getsize("dades.csv") == 0
-
-    capsaleres = ['timestamp', 'in_time_frame', 'current_dem_target', 'action', 'mode', 'hot_prod', 'cold_prod', 'hot_dem', 'cold_dem']
-
-    print("Write data")
-    with open('dades.csv', mode='a', newline='', encoding='utf-8') as fitxer:
-        escriptor = csv.writer(fitxer)
-
-        if es_nou_fitxer:
-            escriptor.writerow(capsaleres)
-
-        escriptor.writerow(l)
-
-    print(f"{now}: Estat final de la bomba per a aquest cicle: {'ON' if action == 1 else 'OFF'}.")
-    response = {"respuesta":  "Parada" if action == 2 else {"yes" if action else "no"}} 
-
-    
-    #change
-    resp = ["no","yes","parada"]
-    response = {"respuesta":  resp[action]} 
-    
-    print(f"RESPONSE: {response}")
-    return response
-
 
 def get_decision():
     global system_data, last_prediction_update_day, total_predicted_production
@@ -565,8 +400,8 @@ def get_decision():
 
 
 # crearla en tu App
-plc = PLCController(ip="172.17.10.110", rack=0, slot=1)
-# plc = PLCController(ip="127.0.0.1", rack=0, slot=1)
+# plc = PLCController(ip="172.17.10.110", rack=0, slot=1)
+plc = PLCController(ip="127.0.0.1", rack=0, slot=1)
 
 mode_actions = {
     "hot": plc.set_heat_mode,
@@ -575,24 +410,42 @@ mode_actions = {
     "automatic": plc.set_automatic_mode,
 }
 
-if __name__ == '__main__':
+def stop():
+    
+    if plc.alarm_active:
+        logger.error("Alarma detectada → apagando sistema")
+        plc.close_doors()  # si quieres
+        plc.disconnect()
+    
+    sys.exit(1)
 
-    system_data = get_last_data_from_db()
+if __name__ == '__main__':
 
     # --- Planificació inicial de calor i fred ---
     now = datetime.now().replace(microsecond=0)
 
     print(f"{now}: Sistema iniciat. Carregant dades inicials.")
     
+    system_data = get_last_data_from_db()
+    print(f"system_data: {system_data}")
+
+    stop()
+   
     plc.connect()
 
     mode = plc.get_current_mode()
     print(f"Actual mode: {mode}")
 
     req = get_req(url, system_data)
-    dem_data = get_dem(req)
-    prod_data = get_prod(req)
-    rain_data = get_rain(req)
+    logger.debug(f"Request response data:{req}")
+    dem_data = get_dem(req) #demanda
+    prod_data = get_prod(req) #energy-production
+    rain_data = get_rain(req) #rain-prediction
+
+    logger.debug(f"dem_data:{req}")
+    logger.debug(f"prod_data:{req}")
+    logger.debug(f"rain_data:{req}")
+
     last_prediction_update_day = datetime.now().day
     print(f"{datetime.now()}: Prediccions inicials carregades. Dia de darrera actualització: {last_prediction_update_day}")
 
@@ -634,8 +487,7 @@ if __name__ == '__main__':
 
     # --- Bucle de control principal ---
     while True:
-        
-        print("Bucle")
+        logger.info(f"New cicle")
         respuesta_nn = get_decision()
         respuesta_nn = respuesta_nn["respuesta"]
         print(f"nn_result: {respuesta_nn}")
