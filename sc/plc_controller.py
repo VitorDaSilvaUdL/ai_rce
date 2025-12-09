@@ -8,9 +8,13 @@ from snap7.util import set_bool, get_bool, get_dword
 from snap7.types import Areas
 from tqdm import tqdm
 
+import logging
+logging.getLogger("snap7").setLevel(logging.CRITICAL)
+
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(message)s",
+    level=logging.DEBUG,
+    # format="%(asctime)s - %(message)s",
+    format="%(asctime)s [%(levelname)s] %(filename)s:%(lineno)d - %(funcName)s() - %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S"
 )
 
@@ -856,7 +860,7 @@ class PLCController:
         """
         r = (respuesta_nn or "").strip().lower()
 
-        if r == 'si':
+        if r in ('si', 'yes'):
             return self.state_decision_yes(estado_actual)
         elif r == 'no':
             return self.state_decision_no(estado_actual)

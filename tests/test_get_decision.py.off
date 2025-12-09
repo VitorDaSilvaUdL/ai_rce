@@ -1,0 +1,147 @@
+# tests/test_get_decision.py
+#
+# Tests mínimos para get_decision, muy mockeados:
+#   1) Caso con producción insuficiente → respuesta "parada"
+#   2) Caso sin demanda pendiente → respuesta "no"
+#   3) Caso con error interno en get_last_data_from_db → respuesta "parada" (ruta de excepción)
+
+from datetime import datetime
+import pytest
+
+import sc.main as main
+from sc.main import get_decision
+
+
+class FakePLC:
+    """
+    PLC falso para no tocar el hardware real.
+    Sólo implementa los métodos que get_decision usa.
+    """
+    def __init__(self):
+        self.alarm_active = False
+        self.last_nn = None
+        self.last_state = None
+        self.last_written = None
+
+    def get_system_state(self):
+        # Devuelve un estado y una estructura de combinaciones cualquiera.
+        return "estado_actual_fake", {"combos": 1}
+
+    def decide_next_state_from_nn(self, respuesta_nn, estado_actual):
+        self.last_nn = respuesta_nn
+        self.last_state = estado_actual
+        return "nuevo_estado_fake"
+
+    def final_write_to_plc_nn_mode(self, nuevo_estado, combinaciones):
+        self.last_written = (nuevo_estado, combinaciones)
+
+
+def _fix_datetime(monkeypatch, year=2025, month=1, day=1, hour=12, minute=0, second=0):
+    """
+    Helper para fijar main.datetime.now() a un instante concreto.
+    Evitamos caer en las ramas especiales de medianoche (0:00),
+    7:00 (calor) y 19:00 (fred).
+    """
+
+    class FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(year, month, day, hour, minute, second)
+
+    monkeypatch.setattr(main, "datetime", FixedDateTime)
+
+
+def _base_common_monkeypatch(monkeypatch):
+    """
+    Helper para preparar el entorno común:
+      - PLC falso
+      - get_last_data_from_db que devuelve algo simple
+      - prod_data/dem_data con estructuras mínimas
+    """
+    fake_plc = FakePLC()
+    monkeypatch.setattr(main, "plc", fake_plc)
+
+    # Evitar acceso real a la base de datos
+    monkeypatch.setattr(main, "get_last_data_from_db", lambda: {"dummy": 1})
+
+    # Estructuras mínimas para que el código no falle al acceder
+    main.dem_data = {
+        "hot_dem": {},
+        "cold_dem": {},
+    }
+    main.prod_data = {
+        "hot": {},
+        "cold": {},
+    }
+    main.rain_data = {}
+
+    return fake_plc
+
+
+def test_get_decision_produccion_insuficiente_devuelve_parada(monkeypatch):
+    """
+    Caso 1:
+      - total_predicted_production = -1
+      - current_dem_target > 0
+    Entonces se entra en la rama de "Producción insuficiente" y
+    la acción se marca como 'parada'.
+    """
+    _fix_datetime(monkeypatch, hour=12, minute=0)
+    fake_plc = _base_common_monkeypatch(monkeypatch)
+
+    main.total_predicted_production = -1
+    main.current_dem_target = 10.0  # hay demanda
+    main.temp_mode = {}             # sin franjas planificadas
+
+    resp = get_decision()
+
+    assert isinstance(resp, dict)
+    assert resp.get("respuesta") == "parada"
+    # Además podemos comprobar que el PLC falso se ha usado
+    assert fake_plc.last_written is not None
+
+
+def test_get_decision_sin_demanda_devuelve_no(monkeypatch):
+    """
+    Caso 2:
+      - total_predicted_production >= 0
+      - current_dem_target = 0
+    No hay demanda pendiente y no hay franja activa,
+    así que la función debe devolver 'no'.
+    """
+    _fix_datetime(monkeypatch, hour=12, minute=0)
+    fake_plc = _base_common_monkeypatch(monkeypatch)
+
+    main.total_predicted_production = 0.0
+    main.current_dem_target = 0.0
+    main.temp_mode = {}  # sin franjas seleccionadas
+
+    resp = get_decision()
+
+    assert isinstance(resp, dict)
+    assert resp.get("respuesta") == "no"
+    assert fake_plc.last_written is not None
+
+
+def test_get_decision_error_en_lectura_db_devuelve_parada(monkeypatch):
+    """
+    Caso 3:
+      Forzamos un error en get_last_data_from_db.
+      La función get_decision está envuelta en un try/except general,
+      así que ante cualquier excepción debe devolver siempre
+      safe_response = {"respuesta": "parada"}.
+    """
+    _fix_datetime(monkeypatch, hour=12, minute=0)
+
+    fake_plc = FakePLC()
+    monkeypatch.setattr(main, "plc", fake_plc)
+
+    def _raise_db():
+        raise RuntimeError("Error forzado en DB")
+
+    monkeypatch.setattr(main, "get_last_data_from_db", _raise_db)
+
+    resp = get_decision()
+
+    assert isinstance(resp, dict)
+    assert resp.get("respuesta") == "parada"

@@ -79,7 +79,7 @@ SENSOR_DBS_OFFSET90 = [
 # =========================
 
 logger = logging.getLogger("snap7-dummy-server")
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.ERROR)
 
 _fmt = logging.Formatter("%(asctime)s | %(levelname)s | %(message)s")
 _fh = RotatingFileHandler(LOG_FILE, maxBytes=1_000_000, backupCount=3, encoding="utf-8")

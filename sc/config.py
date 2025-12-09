@@ -30,3 +30,13 @@ OUTPUT_CSV = _raw["paths"]["output_csv"]
 TEST_MODE = _raw.get("test_mode", False)
 LOG_LEVEL = _raw.get("log_level", "INFO")
 ITER_TIME_SEC = _raw.get("iteration_time_in_minutes", "15") 
+
+SMTP_CONFIG = _raw.get("smtp", {})
+
+SMTP_ENABLED = SMTP_CONFIG.get("enabled", False)
+SMTP_FROM = SMTP_CONFIG.get("from")
+SMTP_TO = SMTP_CONFIG.get("to")  # puede ser string o lista
+SMTP_USER = SMTP_CONFIG.get("user")
+SMTP_PASSWORD = SMTP_CONFIG.get("password")
+SMTP_SUBJECT = SMTP_CONFIG.get("subject", "ALERTA Sistema RCE")
+SMTP_MIN_LEVEL = SMTP_CONFIG.get("min_level", "WARNING")

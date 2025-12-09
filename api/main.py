@@ -92,6 +92,7 @@ def predict(data: EntryList):
     r_pred = _rain_predictor.predict()
 
     # Part de predicció de temperatura dels tancs
+    logger.info(f"VITOR: entrada predictor: {data}")
     _temp_predictor = temp_predictor(run_config["temperature"])
     t_pred = _temp_predictor.predict(data, do_plot=False)
 

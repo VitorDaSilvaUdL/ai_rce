@@ -3,9 +3,9 @@ from sc.api_data.api_req import get_data
 import pandas as pd
 import numpy as np
 import json
-import logging
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+
+from sc.logger import get_logger
+logger = get_logger(__name__)
 
 # lect_dir = r"C:\Users\Usuari\Documents\RCE\lecturas0.csv"
 # solar_dir = r"C:\Users\Usuari\Documents\RCE\Solarimeter0.csv"
@@ -230,15 +230,15 @@ def get_last_data_from_db_legacy():
 # ---------------------------------------------------------------------------
 VARIABLE_SOURCES = {
     "hot": {
-        "varnames": ["TempT6_RCEa", "TempT6_RCEa_v2"],
+        "varnames": ["TempT6_RCEa"],
         "source": lect_dir,   # temperatura caliente
     },
     "cold": {
-        "varnames": ["TempT9_RCEa", "TempT9_RCEa_v2"],
+        "varnames": ["TempT9_RCEa"],
         "source": lect_dir,   # temperatura fría
     },
     "v_vent": {
-        "varnames": ["VelVent_RCEa", "VelVent_RCEa_v2"],
+        "varnames": ["VelVent_RCEa"],
         "source": lect_dir,   # velocidad viento
     },
     "solar": {
@@ -253,8 +253,8 @@ VARIABLE_SOURCES = {
 
 def get_last_data_from_db():
     logger.info("get_last_data_from_db: leyendo CSVs")
-    df = pd.read_csv(lect_dir, sep=";", low_memory=False)
-    df2 = pd.read_csv(solar_dir, sep=";", low_memory=False)
+    df = pd.read_csv(lect_dir, sep=";",encoding="latin-1", low_memory=False)
+    df2 = pd.read_csv(solar_dir, sep=";",encoding="latin-1", low_memory=False)
     df3 = pd.read_csv(ir_dir, encoding="latin-1", sep=";", low_memory=False)
 
     logger.debug(f"get_last_data_from_db: df.shape={df.shape}")
