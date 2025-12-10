@@ -5,19 +5,20 @@ echo =======================================
 echo.
 
 REM ---- CONFIGURAR PATH DEL PROYECTO ----
-SET PROJECT_PATH=C:\Users\PcVIP\OneDrive - udl.cat\Investigacion\CREA\ai_rce\watchdog_sc.py
+SET PROJECT_PATH="C:\Users\PcVIP\OneDrive - udl.cat\Investigacion\CREA\ai_rce"
 
-REM ---- Activar entorno virtual (si usas uno) ----
+REM ---- ACTIVAR ENTORNO VIRTUAL (SI USAS UNO) ----
 REM CALL %PROJECT_PATH%\venv\Scripts\activate.bat
 
 echo Iniciando API...
 start "API" cmd /k "cd %PROJECT_PATH% && python -m api.main"
 
-echo Iniciando SC (sc.main)...
+echo Iniciando SC...
 start "SC" cmd /k "cd %PROJECT_PATH% && python -m sc.main"
 
 echo Iniciando WATCHDOG...
 start "WATCHDOG" cmd /k "cd %PROJECT_PATH% && python watchdog_sc.py"
 
+echo.
 echo Todo iniciado. Puede cerrar esta ventana.
 pause

@@ -27,7 +27,12 @@ python -m api.main
 
 ### 2. Iniciar software de control
 ```
-python -m sc.main_vitor
+python -m sc.main
+```
+
+### 3. Iniciar software watchdog
+```
+python watchdog.py
 ```
 
 ## Funcionamiento del algoritmo
@@ -106,3 +111,5 @@ VARIABLE_SOURCES = {
     },
 }
 ```
+
+https://api.open-meteo.com/v1/forecast?latitude=41.62&longitude=0.62&hourly=terrestrial_radiation
