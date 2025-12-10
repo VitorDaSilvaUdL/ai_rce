@@ -243,241 +243,6 @@ def get_now_val_2(curr: dict):
             return curr[(frame + timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%S") ]
     return 0
 
-def get_decision_old():
-    global system_data, last_prediction_update_day, total_predicted_production
-    global selected_time_frames, current_dem_target, dem_data, prod_data
-    global action, mode
-
-    now = datetime.now().replace(microsecond=0)
-
-    # Valor seguro por defecto (por si algo peta antes de asignar nada)
-    safe_response = {"respuesta": "parada"}
-
-    try:
-        # 1) Leer datos del sistema
-        system_data = get_last_data_from_db()
-        logger.info(f"{now}: Nou cicle de control.")
-        l = [now]
-
-        # 2) Actualización diaria de predicciones a medianoche
-        try:
-            if now.day != last_prediction_update_day and now.hour == 0 and now.minute == 0:
-                logger.info(f"{now}: Iniciant actualització diària de prediccions.")
-                req = get_req(url, system_data)
-                if req is None:
-                    logger.error(f"{now}: No s'han pogut obtenir prediccions (req=None) en actualització diària.")
-                else:
-                    dem_data = get_dem(req)
-                    prod_data = get_prod(req)
-                    rain_data = get_rain(req)
-                    last_prediction_update_day = now.day
-                    logger.info(f"{now}: Prediccions actualitzades per al dia {last_prediction_update_day}.")
-        except Exception:
-            logger.exception(f"{now}: Error actualitzant prediccions diàries.")
-
-        # 3) Calcular nou horari de calor (7:00–7:14)
-        try:
-            if now.hour == 7 and 0 <= now.minute < 15:
-                logger.info(f"{now}: Planificant demanda de calor.")
-                req = get_req(url, system_data)
-                if req is None:
-                    logger.error(f"{now}: No s'han pogut obtenir prediccions per a calor (req=None).")
-                else:
-                    dem_data = get_dem(req)
-                    prod_data = get_prod(req)
-                    rain_data = get_rain(req)
-                    last_prediction_update_day = now.day
-
-                    start_dem_heat = now.replace(hour=12, minute=0, second=0, microsecond=0)
-                    end_dem_heat = (now + timedelta(days=1)).replace(hour=12, minute=0, second=0, microsecond=0)
-                    dem_c = calculate_dem_for_period(dem_data['hot_dem'], start_dem_heat, end_dem_heat)
-
-                    selected_time_frames, total_predicted_production = calculate_optimal_production_plan(
-                        prod_data['hot'], dem_c, 1
-                    )
-                    current_dem_target = dem_c
-                    logger.info(
-                        f"{now}: Mode establert a HOT. Demanda calor objectiu: {fmt_joules(current_dem_target)} [Joules]. "
-                        f"Producció prevista: {fmt_joules(total_predicted_production)} [Joules]."
-                    )
-                    if total_predicted_production == -1:
-                        logger.warning(
-                            f"{now}: No s’ha pogut trobar un pla òptim per a la demanda de calor. Demanda: {fmt_joules(dem_c)} [Joules]."
-                        )
-                    else:
-                        frames_str = [dt.isoformat(timespec='seconds') for dt in selected_time_frames]
-                        logger.info(f"{now}: Franges horàries seleccionades per a calor: {frames_str}")
-        except Exception:
-            logger.exception(f"{now}: Error planificant demanda de calor.")
-
-        # 4) Calcular nou horari de fred (19:00–19:14)
-        try:
-            if now.hour == 19 and 0 <= now.minute < 15:
-                logger.info(f"{now}: Planificant demanda de fred.")
-                req = get_req(url, system_data)
-                if req is None:
-                    logger.error(f"{now}: No s'han pogut obtenir prediccions per a fred (req=None).")
-                else:
-                    dem_data = get_dem(req)
-                    prod_data = get_prod(req)
-                    rain_data = get_rain(req)
-                    last_prediction_update_day = now.day
-
-                    start_dem_cool = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
-                    end_dem_cool = (now + timedelta(days=2)).replace(hour=0, minute=0, second=0, microsecond=0)
-                    dem_f = calculate_dem_for_period(dem_data['cold_dem'], start_dem_cool, end_dem_cool)
-
-                    selected_time_frames, total_predicted_production = calculate_optimal_production_plan(
-                        prod_data['cold'], dem_f, 0
-                    )
-                    current_dem_target = dem_f
-                    logger.info(
-                        f"{now}: Mode establert a COLD. Demanda fred objectiu: {fmt_joules(current_dem_target)} [Joules]. "
-                        f"Producció prevista: {fmt_joules(total_predicted_production)} [Joules]."
-                    )
-                    if total_predicted_production == -1:
-                        logger.warning(
-                            f"{now}: No s’ha pogut trobar un pla òptim per a la demanda de fred. Demanda: {fmt_joules(dem_f)} [Joules]."
-                        )
-                    else:
-                        frames_str = [dt.isoformat(timespec='seconds') for dt in selected_time_frames]
-                        logger.info(f"{now}: Franges horàries seleccionades per a fred: {frames_str}")
-        except Exception:
-            logger.exception(f"{now}: Error planificant demanda de fred.")
-
-        logger.info(f"{now}: Lògica de control en temps real. Demanda objectiu actual: {fmt_joules(current_dem_target)} [Joules].")
-
-        # 5) Lògica d'acció en temps real
-        if total_predicted_production == -1 and current_dem_target > 0:
-            l.append(0)
-            action = 2
-            logger.warning(f"{now}: Producció insuficient. Bomba OFF.")
-        else:
-            found_active_time_frame = False
-            current_time_frame_start = now.replace(
-                minute=now.minute - (now.minute % min_time_step), second=0, microsecond=0
-            )
-            current_time_frame_end = current_time_frame_start + timedelta(minutes=min_time_step)
-            logger.info(
-                f"{now}: Franja horària actual: {current_time_frame_start.isoformat(timespec='seconds')} "
-                f"a {current_time_frame_end.isoformat(timespec='seconds')}"
-            )
-
-            for time_frame_dt in temp_mode.keys():
-                frame_end_dt = time_frame_dt + timedelta(minutes=min_time_step)
-                if time_frame_dt <= now < frame_end_dt:
-                    found_active_time_frame = True
-                    logger.info(
-                        f"{now}: Franja horària actual ({now.isoformat(timespec='seconds')}) activa per a l’operació."
-                    )
-
-                    current_frame_prod_value = 0.0
-                    current_frame_str = time_frame_dt.isoformat(timespec='seconds')
-                    curr_mode = "hot" if temp_mode[time_frame_dt] else "cold"
-
-                    if curr_mode == "hot" and current_frame_str in prod_data['hot']:
-                        current_frame_prod_value = float(prod_data['hot'][current_frame_str])
-                        logger.info(
-                            f"{now}: Producció calor prevista en aquesta franja: {fmt_joules(current_frame_prod_value)} [Joules]."
-                        )
-                    elif curr_mode == "cold" and current_frame_str in prod_data['cold']:
-                        current_frame_prod_value = float(prod_data['cold'][current_frame_str])
-                        logger.info(
-                            f"{now}: Producció fred prevista en aquesta franja: {fmt_joules(current_frame_prod_value)} [Joules]."
-                        )
-                    else:
-                        logger.warning(
-                            f"{now}: Sense dades de producció per a la franja actual en mode {curr_mode}."
-                        )
-
-                    energy_consumed_pump_wh = P_bomba_watts * time_step_hours
-                    logger.info(
-                        f"{now}: Energia que consumiria la bomba si està ON: {fmt_joules(energy_consumed_pump_wh)} [Joules]."
-                    )
-
-                    if energy_consumed_pump_wh > 0:
-                        COP = current_frame_prod_value / energy_consumed_pump_wh
-                        logger.info(f"{now}: COP calculat: {COP}.")
-                    else:
-                        COP = 0
-                        logger.warning(f"{now}: Energia consumida per la bomba és zero, COP=0.")
-
-                    # Aquí podrías meter la condició real de COP si quieres
-                    logger.info(f"curr_mode: {curr_mode}")
-                    action = 1 if curr_mode != mode else 0
-                    mode = curr_mode
-                    Ttank = 1
-                    logger.info(f"{now}: Bomba {'ON' if action == 1 else 'OFF'}. Ttank = {Ttank}.")
-                    break
-
-            l.append(found_active_time_frame)
-
-            if not found_active_time_frame:
-                action = 2
-                logger.info(f"{now}: Hora actual fora de franges seleccionades. Bomba OFF.")
-
-            if current_dem_target > 0:
-                old_dem_target = current_dem_target
-                current_dem_target = verify_and_adjust_demand(current_dem_target)
-                logger.info(
-                    f"{now}: Demanda restant ajustada de {fmt_joules(old_dem_target)} [Joules] "
-                    f"a {fmt_joules(current_dem_target)} [Joules]."
-                )
-                if current_dem_target <= 0:
-                    selected_time_frames = []
-                    total_predicted_production = 0.0
-                    current_dem_target = 0.0
-                    action = 0
-                    logger.info(f"{now}: Demanda coberta/esgotada. Reiniciant pla i bomba OFF.")
-            else:
-                action = 0
-                logger.info(f"{now}: No hi ha demanda objectiu pendent. Bomba OFF.")
-
-        # 6) Guardar en CSV
-        l.append(current_dem_target)
-
-        # Acción en text per a log/csv (0=no, 1=yes, 2=parada)
-        resp_labels = ["no", "si", "parada"]
-        safe_action = 2 if action not in (0, 1, 2) else action
-        accion_str = resp_labels[safe_action]
-
-        l.append(accion_str)
-        l.append(mode)
-        l.append(get_now_val(prod_data['hot']))
-        l.append(get_now_val(prod_data['cold']))
-        l.append(get_now_val_2(dem_data['hot_dem']))
-        l.append(get_now_val_2(dem_data['cold_dem']))
-
-        es_nou_fitxer = not os.path.exists("dades.csv") or os.path.getsize("dades.csv") == 0
-        capsaleres = [
-            'timestamp', 'in_time_frame', 'current_dem_target',
-            'action', 'mode', 'hot_prod', 'cold_prod', 'hot_dem', 'cold_dem'
-        ]
-
-        logger.info("Write data to dades.csv")
-        try:
-            with open('dades.csv', mode='a', newline='', encoding='utf-8') as fitxer:
-                escriptor = csv.writer(fitxer)
-                if es_nou_fitxer:
-                    escriptor.writerow(capsaleres)
-                escriptor.writerow(l)
-        except Exception:
-            logger.exception(f"{now}: Error escrivint al CSV dades.csv")
-
-        logger.info(
-            f"{now}: Estat final de la bomba per a aquest cicle: "
-            f"{'ON' if safe_action == 1 else 'OFF'}."
-        )
-
-        response = {"respuesta": resp_labels[safe_action]}
-        logger.info(f"RESPONSE: {response}")
-        return response
-
-    except Exception:
-        # Cualquier error no controlado aquí NO revienta el bucle.
-        logger.exception(f"{now}: Error inesperat a get_decision(). Retornant 'parada'.")
-        return safe_response
-
 def update_predictions(now, system_data, context: str) -> bool:
     """
     Actualiza dem_data, prod_data y rain_data a partir del backend de predicciones.
@@ -677,7 +442,7 @@ def get_decision():
                             f"{fmt_joules(current_frame_prod_value)} [Joules]."
                         )
                     else:
-                        logger.warning(
+                        logger.info(
                             f"{now}: Sense dades de producció per a la franja actual en mode {curr_mode}."
                         )
 
@@ -693,7 +458,7 @@ def get_decision():
                         logger.info(f"{now}: COP calculat: {COP:.2f}.")
                     else:
                         COP = 0
-                        logger.warning(
+                        logger.info(
                             f"{now}: Energia consumida per la bomba és zero, COP=0."
                         )
 
@@ -819,7 +584,7 @@ if __name__ == '__main__':
 
     # Leer ultimo estado conocido del sistema
     system_data = get_last_data_from_db()
-    logger.info(f"system_data: {system_data}")
+    logger.debug(f"system_data: {system_data}")
 
     # Conectar con el PLC
     plc.connect()
@@ -907,9 +672,18 @@ if __name__ == '__main__':
         # 3) Calcular nuevo estado a partir de la respuesta de la IA
         nuevo_estado = plc.decide_next_state_from_nn(respuesta_nn, estado_actual)
 
+        # AVISO: solo si la IA dice "si" y el estado realmente cambia
+        if respuesta_nn == "si" and nuevo_estado != estado_actual:
+            logger.warning(
+                f"RCE - CAMBIO DE ESTADO.\n"
+                f"Estado anterior: {estado_actual}\n"
+                f"Estado nuevo:     {nuevo_estado}\n"
+                f"Se procede a aplicar el cambio en el PLC."
+            )
+
         # 4) Escribir nuevo estado en el PLC
         plc.final_write_to_plc_nn_mode(nuevo_estado, combinaciones)
 
         # Espera entre iteraciones del bucle de control
-        # sleep(60*15)  # version normal cada 15 minutos
+        sleep(60*15)  # version normal cada 15 minutos
         # sleep(5)        # version rapida para pruebas

@@ -49,30 +49,63 @@ def get_forecast_24h():
     start_idx = next(i for i, t in enumerate(times) if t >= next_hour)
     n_hours = 24  # siempre queremos 24 horas
     ir_list = nasa_url()
-    if len(ir_list) > 1:
+
+    # Si hemos recibido más de un día, guardamos copia y mapeamos por fecha
+    # if len(ir_list) > 1:
+    #     saved_ir = ir_list
+    #     last_update = datetime.now().day
+    #     with open("data.txt", "w") as text:
+    #         text.write(str(ir_list))
+        
+    if ir_list:
         saved_ir = ir_list
         last_update = datetime.now().day
-        with open("data.txt", "w") as text:
-            text.write(str(ir_list))
+        # with open("data.txt", "w") as text:
+        #     text.write(str(ir_list))
+
+        # Mapa fecha -> valor diario de IR
+        ir_by_date = {
+            item["date"]: item["radiation_infrared"]
+            for item in ir_list
+            if "date" in item
+        }
+    else:
+        ir_by_date = {}
+
+  
 
     resultados = []
-    print(f"\n VITOR times: {times} ")
-    print(f"\n VITOR n_hours: {n_hours} ")
-    print(f"\n VITOR start_idx: {start_idx} ")
-    print(f"\n VITOR ir_list: {ir_list} ")
+    # print(f"\n VITOR times: {times} ")
+    # print(f"\n VITOR n_hours: {n_hours} ")
+    # print(f"\n VITOR start_idx: {start_idx} ")
+    # print(f"\n VITOR ir_list: {ir_list} ")
 
     for i in range(n_hours):
         dt = times[start_idx + i]
         temp = temps[start_idx + i]
         rh = hums[start_idx + i]
 
-        # Decidir IR
-        if (len(ir_list) == 1 and not saved_ir) or (last_update and last_update != datetime.now().day):
+        date_key = dt.date().isoformat()  # 'YYYY-MM-DD'
+
+        # Caso 1: no hay datos de NASA o están caducados -> estimar por temp+humedad
+        if (not ir_by_date) or (last_update and last_update != datetime.now().day):
             ir = estimate_longwave_ir(temp, rh)
-        elif len(ir_list) == 1 and saved_ir:
-            ir = saved_ir
+
         else:
-            ir = ir_list[start_idx + i]
+            # Tenemos datos de NASA para algún día
+            if date_key in ir_by_date:
+                ir = ir_by_date[date_key]
+            else:
+                # No hay IR para ese día concreto -> fallback a estimación
+                ir = estimate_longwave_ir(temp, rh)
+                
+        # # Decidir IR
+        # if (len(ir_list) == 1 and not saved_ir) or (last_update and last_update != datetime.now().day):
+        #     ir = estimate_longwave_ir(temp, rh)
+        # elif len(ir_list) == 1 and saved_ir:
+        #     ir = saved_ir
+        # else:
+        #     ir = ir_list[start_idx + i]
 
         # Codificación cíclica
         seconds_in_day = dt.hour * 3600 + dt.minute * 60

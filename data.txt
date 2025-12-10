@@ -1,0 +1,1 @@
+[{'date': '2024-12-10', 'radiation_infrared': 6.468}, {'date': '2024-12-11', 'radiation_infrared': 7.4244}]

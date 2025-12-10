@@ -10,28 +10,38 @@ EMAIL_MIN_LEVEL_NAME = getattr(config, "SMTP_MIN_LEVEL", "WARNING")
 
 # Anti-spam: mínimo N segundos entre emails
 # _EMAIL_MIN_INTERVAL = 300  # 5 minutos
-_EMAIL_MIN_INTERVAL = 30  # 5 minutos
+_EMAIL_MIN_INTERVAL = 60  # 1 minuto
 _last_email_ts = 0.0
-
 
 def _create_base_handlers():
     """
     Crea los handlers básicos:
-      - FileHandler -> sc.log
+      - FileHandler -> sc.log   (nivel según config.LOG_LEVEL)
+      - FileHandler -> sc_debug.log (nivel DEBUG siempre)
       - StreamHandler -> consola
     """
-    fmt = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+    fmt = "%(asctime)s [%(levelname)s]: %(message)s"
+    # fmt = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+    # fmt = "%(asctime)s [%(levelname)s]: %(message)s"
     # fmt = "%(asctime)s [%(levelname)s] %(filename)s:%(lineno)d - %(funcName)s() - %(message)s"
 
     formatter = logging.Formatter(fmt)
 
+    # --- Handler 1: sc.log (nivel configurado) ---
     file_handler = logging.FileHandler("sc.log", mode="a", encoding="utf-8")
     file_handler.setFormatter(formatter)
 
+    # --- Handler 2: sc_debug.log (TODO DEBUG SIEMPRE) ---
+    debug_handler = logging.FileHandler("sc_debug.log", mode="a", encoding="utf-8")
+    debug_handler.setFormatter(formatter)
+    debug_handler.setLevel(logging.DEBUG)  # SIEMPRE DEBUG
+
+    # --- Handler consola ---
     stream_handler = logging.StreamHandler()
     stream_handler.setFormatter(formatter)
 
-    return [file_handler, stream_handler]
+    return [file_handler, debug_handler, stream_handler]
+
 
 
 class ThrottledSMTPHandler(SMTPHandler):

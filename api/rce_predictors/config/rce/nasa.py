@@ -1,5 +1,6 @@
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 def nasa_url():
     # Coordenadas para Madrid
@@ -12,12 +13,27 @@ def nasa_url():
     lat = 41.606527
     lon = 0.623429
 
-    today = (datetime.now() - timedelta(days=365)).strftime("%Y%m%d")
-    tomorrow = (datetime.now() - timedelta(days=364)).strftime("%Y%m%d")
+    # today = (datetime.now() - timedelta(days=365)).strftime("%Y%m%d")
+    # tomorrow = (datetime.now() - timedelta(days=364)).strftime("%Y%m%d")
 
-    start = today
-    end = tomorrow
+    # start = today
+    # end = tomorrow
 
+    # Fecha actual en UTC
+    now_utc = datetime.now(timezone.utc)
+    now_madrid = datetime.now(ZoneInfo("Europe/Madrid"))
+
+    # Base: hace 365 días en MADRID
+    base_date = (now_madrid - timedelta(days=365)).date()
+
+    # Siguiente día
+    next_date = base_date + timedelta(days=1)
+
+    start = base_date.strftime("%Y%m%d")
+    end = next_date.strftime("%Y%m%d")
+
+    print(f"start: {start} ---- end: {end}")
+    
     # Definir la URL para la API de NASA POWER
     url_nasa = f"https://power.larc.nasa.gov/api/temporal/daily/point?parameters=ALLSKY_SFC_LW_DWN&community=RE&longitude={lon}&latitude={lat}&start={start}&end={end}&format=JSON"
 
