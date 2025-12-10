@@ -7,7 +7,7 @@ from sc.logger import get_logger
 
 HEARTBEAT_FILE = "heartbeat_sc.txt"
 CHECK_INTERVAL_SEC = 3600        # cada cuánto comprobar
-TIMEOUT_SEC = 30               # si en 30s no hay latido → problema
+TIMEOUT_SEC = 900               # si en 900s no hay latido → problema
 
 logger = get_logger(__name__)
 

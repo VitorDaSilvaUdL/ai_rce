@@ -58,6 +58,9 @@ log_config = {
 logger = logging.getLogger(__name__)
 logger.info("Logger inicializado")
 
+@app.get("/health")
+def health():
+    return {"status": "ok"}
 
 # Endpoint de predicció
 @app.post("/predict")

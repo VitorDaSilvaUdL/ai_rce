@@ -10,21 +10,6 @@ from sc.utils.data_transform import fmt_joules
 
 logger = get_logger(__name__)
 
-# import logging
-
-# # Crear fichero de log
-# logging.basicConfig(
-#     level=logging.DEBUG,                    # Nivel de logs
-#     # filename="sc.log",                     # Nombre del archivo de salida
-#     # filemode="a",                           # "a" append / "w" overwrite
-#     handlers=[logging.FileHandler("sc.log", mode='a'),
-#                               logging.StreamHandler()],
-#     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-# )
-
-
-# logger = logging.getLogger(__name__)
-
 from sc.api_data.api_req import get_req, get_data
 from sc.utils.getters import get_prod, get_dem, get_rain
 from fastapi import FastAPI
@@ -35,7 +20,6 @@ from sc.config import (
     PREDICT_URL, P_BOMBA_WATTS, MIN_TIME_STEP,
     PLC_IP, PLC_RACK, PLC_SLOT, OUTPUT_CSV, ITER_TIME_SEC
 )
-
 
 # logger.setLevel(logging.DEBUG)
 
@@ -928,4 +912,4 @@ if __name__ == '__main__':
 
         # Espera entre iteraciones del bucle de control
         # sleep(60*15)  # version normal cada 15 minutos
-        sleep(5)        # version rapida para pruebas
+        # sleep(5)        # version rapida para pruebas
