@@ -9,7 +9,8 @@ from sc import config
 EMAIL_MIN_LEVEL_NAME = getattr(config, "SMTP_MIN_LEVEL", "WARNING")
 
 # Anti-spam: mínimo N segundos entre emails
-_EMAIL_MIN_INTERVAL = 300  # 5 minutos
+# _EMAIL_MIN_INTERVAL = 300  # 5 minutos
+_EMAIL_MIN_INTERVAL = 30  # 5 minutos
 _last_email_ts = 0.0
 
 
@@ -19,8 +20,8 @@ def _create_base_handlers():
       - FileHandler -> sc.log
       - StreamHandler -> consola
     """
-    # fmt = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-    fmt = "%(asctime)s [%(levelname)s] %(filename)s:%(lineno)d - %(funcName)s() - %(message)s"
+    fmt = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+    # fmt = "%(asctime)s [%(levelname)s] %(filename)s:%(lineno)d - %(funcName)s() - %(message)s"
 
     formatter = logging.Formatter(fmt)
 

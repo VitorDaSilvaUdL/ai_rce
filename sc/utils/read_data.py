@@ -11,9 +11,9 @@ logger = get_logger(__name__)
 # solar_dir = r"C:\Users\Usuari\Documents\RCE\Solarimeter0.csv"
 # ir_dir = r"C:\Users\Usuari\Documents\RCE\Pyrgeometer0.csv"
 
-lect_dir = r"C:\Users\PcVIP\OneDrive - udl.cat\Investigacion\CREA\Sistema_Control_Segarra_Riu_Ramon\SC_API-master\CSVs\Lecturas0.csv"
-solar_dir = r"C:\Users\PcVIP\OneDrive - udl.cat\Investigacion\CREA\Sistema_Control_Segarra_Riu_Ramon\SC_API-master\CSVs\Solarimeter0.csv"
-ir_dir = r"C:\Users\PcVIP\OneDrive - udl.cat\Investigacion\CREA\Sistema_Control_Segarra_Riu_Ramon\SC_API-master\CSVs\Pyrgeometer0.csv"
+lect_dir = r"C:\Users\PcVIP\OneDrive - udl.cat\Investigacion\CREA\ai_rce\CSVs\Lecturas0.csv"
+solar_dir = r"C:\Users\PcVIP\OneDrive - udl.cat\Investigacion\CREA\ai_rce\CSVs\Solarimeter0.csv"
+ir_dir = r"C:\Users\PcVIP\OneDrive - udl.cat\Investigacion\CREA\ai_rce\CSVs\Pyrgeometer0.csv"
 
 def get_indices(dfn, n, size):
     last = len(dfn) - 1

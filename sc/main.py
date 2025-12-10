@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from time import sleep
 import csv
 from sc.logger import get_logger
+from sc.utils.data_transform import fmt_joules 
 
 logger = get_logger(__name__)
 
@@ -70,6 +71,19 @@ import logging
 from datetime import timedelta
 
 logger = logging.getLogger(__name__)
+
+import pathlib
+
+HEARTBEAT_FILE = "heartbeat_sc.txt"
+
+def write_heartbeat():
+    """
+    Escribe la fecha/hora actual en un fichero de 'latido'.
+    El watchdog usará este fichero para saber si main está vivo.
+    """
+    path = pathlib.Path(HEARTBEAT_FILE)
+    path.write_text(datetime.now().isoformat())
+
 
 def calculate_dem_for_period(df_demand, start_dt, end_dt):
     """
@@ -143,7 +157,7 @@ def calculate_optimal_production_plan(available_prod, target_demand, type):
             ([], -1)
     """
     logger.debug("=== Inicio cálculo de plan óptimo de producción ===")
-    logger.debug(f"Demanda objetivo: {target_demand} [Joules]")
+    logger.debug(f"Demanda objetivo: {fmt_joules(target_demand)} [Joules]")
     logger.debug(f"Número total de franjas disponibles: {len(available_prod)}")
 
     # # Ordenar por producción ascendente
@@ -161,7 +175,7 @@ def calculate_optimal_production_plan(available_prod, target_demand, type):
 
     logger.debug("Franjas ordenadas por producción (ascendente):")
     for ts, prod in sorted_items:
-        logger.debug(f"  - {ts}: {float(prod)} [Joules]")
+        logger.debug(f"  - {ts}: {fmt_joules(float(prod))} [Joules]")
 
     accumulated_production = 0.0
     selected_frames = []
@@ -172,8 +186,8 @@ def calculate_optimal_production_plan(available_prod, target_demand, type):
         selected_frames.append(time_frame_str)
 
         logger.debug(
-            f"Seleccionada {time_frame_str} → {production_value} [Joules] | "
-            f"Acumulado: {accumulated_production}/{target_demand} [Joules]"
+            f"Seleccionada {time_frame_str} → {fmt_joules(float(production_value))} [Joules] | "
+            f"Acumulado: {fmt_joules(accumulated_production / target_demand)} [Joules]"
         )
 
         if accumulated_production >= target_demand:
@@ -183,7 +197,7 @@ def calculate_optimal_production_plan(available_prod, target_demand, type):
     # Si no se llega al objetivo
     if accumulated_production < target_demand:
         logger.debug(
-            f"No se alcanzó la demanda objetivo ({accumulated_production} < {target_demand})."
+            f"No se alcanzó la demanda objetivo ({fmt_joules(accumulated_production)} < {fmt_joules(target_demand)})."
         )
         logger.debug("=== Fin del cálculo: demanda NO alcanzada ===")
         return [], -1
@@ -202,7 +216,7 @@ def calculate_optimal_production_plan(available_prod, target_demand, type):
         logger.debug(f"  {time.isoformat()}  → modo = {type}")
 
     logger.debug("\n=== Fin del cálculo de plan óptimo ===")
-    logger.debug(f"Producción total acumulada: {accumulated_production} [Joules]\n")
+    logger.debug(f"Producción total acumulada: {fmt_joules(accumulated_production)} [Joules]\n")
 
     return selected_frames_dt, accumulated_production
 
@@ -299,12 +313,12 @@ def get_decision_old():
                     )
                     current_dem_target = dem_c
                     logger.info(
-                        f"{now}: Mode establert a HOT. Demanda calor objectiu: {current_dem_target:.2f} [Joules]. "
-                        f"Producció prevista: {total_predicted_production:.2f} [Joules]."
+                        f"{now}: Mode establert a HOT. Demanda calor objectiu: {fmt_joules(current_dem_target)} [Joules]. "
+                        f"Producció prevista: {fmt_joules(total_predicted_production)} [Joules]."
                     )
                     if total_predicted_production == -1:
                         logger.warning(
-                            f"{now}: No s’ha pogut trobar un pla òptim per a la demanda de calor. Demanda: {dem_c:.2f} [Joules]."
+                            f"{now}: No s’ha pogut trobar un pla òptim per a la demanda de calor. Demanda: {fmt_joules(dem_c)} [Joules]."
                         )
                     else:
                         frames_str = [dt.isoformat(timespec='seconds') for dt in selected_time_frames]
@@ -334,12 +348,12 @@ def get_decision_old():
                     )
                     current_dem_target = dem_f
                     logger.info(
-                        f"{now}: Mode establert a COLD. Demanda fred objectiu: {current_dem_target:.2f} [Joules]. "
-                        f"Producció prevista: {total_predicted_production:.2f} [Joules]."
+                        f"{now}: Mode establert a COLD. Demanda fred objectiu: {fmt_joules(current_dem_target)} [Joules]. "
+                        f"Producció prevista: {fmt_joules(total_predicted_production)} [Joules]."
                     )
                     if total_predicted_production == -1:
                         logger.warning(
-                            f"{now}: No s’ha pogut trobar un pla òptim per a la demanda de fred. Demanda: {dem_f:.2f} [Joules]."
+                            f"{now}: No s’ha pogut trobar un pla òptim per a la demanda de fred. Demanda: {fmt_joules(dem_f)} [Joules]."
                         )
                     else:
                         frames_str = [dt.isoformat(timespec='seconds') for dt in selected_time_frames]
@@ -347,7 +361,7 @@ def get_decision_old():
         except Exception:
             logger.exception(f"{now}: Error planificant demanda de fred.")
 
-        logger.info(f"{now}: Lògica de control en temps real. Demanda objectiu actual: {current_dem_target:.2f} [Joules].")
+        logger.info(f"{now}: Lògica de control en temps real. Demanda objectiu actual: {fmt_joules(current_dem_target)} [Joules].")
 
         # 5) Lògica d'acció en temps real
         if total_predicted_production == -1 and current_dem_target > 0:
@@ -380,12 +394,12 @@ def get_decision_old():
                     if curr_mode == "hot" and current_frame_str in prod_data['hot']:
                         current_frame_prod_value = float(prod_data['hot'][current_frame_str])
                         logger.info(
-                            f"{now}: Producció calor prevista en aquesta franja: {current_frame_prod_value:.2f} [Joules]."
+                            f"{now}: Producció calor prevista en aquesta franja: {fmt_joules(current_frame_prod_value)} [Joules]."
                         )
                     elif curr_mode == "cold" and current_frame_str in prod_data['cold']:
                         current_frame_prod_value = float(prod_data['cold'][current_frame_str])
                         logger.info(
-                            f"{now}: Producció fred prevista en aquesta franja: {current_frame_prod_value:.2f} [Joules]."
+                            f"{now}: Producció fred prevista en aquesta franja: {fmt_joules(current_frame_prod_value)} [Joules]."
                         )
                     else:
                         logger.warning(
@@ -394,12 +408,12 @@ def get_decision_old():
 
                     energy_consumed_pump_wh = P_bomba_watts * time_step_hours
                     logger.info(
-                        f"{now}: Energia que consumiria la bomba si està ON: {energy_consumed_pump_wh:.2f} [Joules]."
+                        f"{now}: Energia que consumiria la bomba si està ON: {fmt_joules(energy_consumed_pump_wh)} [Joules]."
                     )
 
                     if energy_consumed_pump_wh > 0:
                         COP = current_frame_prod_value / energy_consumed_pump_wh
-                        logger.info(f"{now}: COP calculat: {COP:.2f}.")
+                        logger.info(f"{now}: COP calculat: {COP}.")
                     else:
                         COP = 0
                         logger.warning(f"{now}: Energia consumida per la bomba és zero, COP=0.")
@@ -422,8 +436,8 @@ def get_decision_old():
                 old_dem_target = current_dem_target
                 current_dem_target = verify_and_adjust_demand(current_dem_target)
                 logger.info(
-                    f"{now}: Demanda restant ajustada de {old_dem_target:.2f} [Joules] "
-                    f"a {current_dem_target:.2f} [Joules]."
+                    f"{now}: Demanda restant ajustada de {fmt_joules(old_dem_target)} [Joules] "
+                    f"a {fmt_joules(current_dem_target)} [Joules]."
                 )
                 if current_dem_target <= 0:
                     selected_time_frames = []
@@ -536,14 +550,14 @@ def plan_mode(
 
     logger.info(
         f"{now}: Mode establert a {mode_label}. "
-        f"Demanda {mode_label.lower()} objectiu: {current_dem_target:.2f} [Joules]. "
-        f"Producció prevista: {total_predicted_production:.2f} [Joules]."
+        f"Demanda {mode_label.lower()} objectiu: {fmt_joules(current_dem_target)} [Joules]. "
+        f"Producció prevista: {fmt_joules(total_predicted_production)} [Joules]."
     )
 
     if total_predicted_production == -1:
         logger.warning(
             f"{now}: No s’ha pogut trobar un pla òptim per a la demanda de "
-            f"{mode_label.lower()}. Demanda: {dem_value:.2f} [Joules]."
+            f"{mode_label.lower()}. Demanda: {fmt_joules(dem_value)} [Joules]."
         )
     else:
         frames_str = [dt.isoformat(timespec='seconds') for dt in selected_time_frames]
@@ -626,7 +640,7 @@ def get_decision():
 
         logger.info(
             f"{now}: Lògica de control en temps real. "
-            f"Demanda objectiu actual: {current_dem_target:.2f} [Joules]."
+            f"Demanda objectiu actual: {fmt_joules(current_dem_target)} [Joules]."
         )
 
         # 5) Lògica d'acció en temps real
@@ -670,13 +684,13 @@ def get_decision():
                         current_frame_prod_value = float(prod_data['hot'][current_frame_str])
                         logger.info(
                             f"{now}: Producció calor prevista en aquesta franja: "
-                            f"{current_frame_prod_value:.2f} [Joules]."
+                            f"{fmt_joules(current_frame_prod_value)} [Joules]."
                         )
                     elif curr_mode == "cold" and current_frame_str in prod_data['cold']:
                         current_frame_prod_value = float(prod_data['cold'][current_frame_str])
                         logger.info(
                             f"{now}: Producció fred prevista en aquesta franja: "
-                            f"{current_frame_prod_value:.2f} [Joules]."
+                            f"{fmt_joules(current_frame_prod_value)} [Joules]."
                         )
                     else:
                         logger.warning(
@@ -686,7 +700,7 @@ def get_decision():
                     energy_consumed_pump_wh = P_bomba_watts * time_step_hours
                     logger.info(
                         f"{now}: Energia consumida per la bomba en aquesta franja: "
-                        f"{energy_consumed_pump_wh:.2f} [Wh]."
+                        f"{fmt_joules(energy_consumed_pump_wh)} [Wh]."
                     )
 
                     COP = 0
@@ -732,8 +746,8 @@ def get_decision():
                 old_dem_target = current_dem_target
                 current_dem_target = verify_and_adjust_demand(current_dem_target)
                 logger.info(
-                    f"{now}: Demanda restant ajustada de {old_dem_target:.2f} [Joules] "
-                    f"a {current_dem_target:.2f} [Joules]."
+                    f"{now}: Demanda restant ajustada de {fmt_joules(old_dem_target)} [Joules] "
+                    f"a {fmt_joules(current_dem_target)} [Joules]."
                 )
                 if current_dem_target <= 0:
                     selected_time_frames = []
@@ -852,7 +866,7 @@ if __name__ == '__main__':
     )
 
     # # Mantener stop aqui para pruebas (igual que en tu codigo original)
-    stop()
+    # stop()
 
     # --- Planificacion inicial de la demanda de frio (solo log informativo) ---
     logger.info(f"{now}: Planificacion inicial de la demanda de frio.")
@@ -865,7 +879,7 @@ if __name__ == '__main__':
     logger.info(f"Ventana de planificacion frio: {start_dem_cool} <-> {end_dem_cool}")
 
     dem_f = calculate_dem_for_period(dem_data["cold_dem"], start_dem_cool, end_dem_cool)
-    logger.info(f"{now}: Demanda de frio estimada para el periodo: {dem_f:.2f} [Joules].")
+    logger.info(f"{now}: Demanda de frio estimada para el periodo: {fmt_joules(dem_f)} [Joules].")
 
     selected_time_frames_cold, total_predicted_production_cold = (
         calculate_optimal_production_plan(prod_data["cold"], dem_f, 0)
@@ -876,12 +890,12 @@ if __name__ == '__main__':
     else:
         logger.info(
             f"{now}: Energia total prevista para cubrir la demanda de frio: "
-            f"{total_predicted_production_cold:.2f} [Joules]."
+            f"{fmt_joules(total_predicted_production_cold)} [Joules]."
         )
         if total_predicted_production_cold == -1:
             logger.info(
                 f"{now}: No se ha podido encontrar un plan optimo para la demanda de frio. "
-                f"Demanda: {dem_f:.2f} [Joules]."
+                f"Demanda: {fmt_joules(dem_f)} [Joules]."
             )
         else:
             frames_cold_str = [
@@ -895,6 +909,7 @@ if __name__ == '__main__':
 
     # --- Bucle de control principal ---
     while True:
+        write_heartbeat()  # latido del sistema
         logger.info("Nuevo ciclo de control")
 
         # 1) Obtener decision de la logica de control
