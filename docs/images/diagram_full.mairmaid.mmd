@@ -1,0 +1,65 @@
+---
+config:
+  layout: elk
+  theme: neo
+---
+flowchart LR
+ subgraph Data["Datos y almacenamiento"]
+    direction TB
+        DB["Base de datos e histórico<br>Variables del sistema"]
+        Logs["Logs y CSV<br>Telemetría y decisiones"]
+  end
+ subgraph Models["Modelos y Predictores"]
+    direction LR
+        DLTank["DL-Tank - LSTM<br>Predicción temperatura tanques"]
+        DLDemand["DL-Demand - DNN<br>Predicción demanda 24h"]
+        Weather["API-Weather<br>Predicción meteorológica"]
+        Prod["RCE-Production<br>Estimación producción RCE"]
+  end
+ subgraph Software["Software AI-RCE"]
+    direction TB
+        SC["Supervisor de Control - SC<br>Planificación HOT y COLD<br>Decisión ON y OFF<br>Seguridad lluvia y viento<br>Escritura al PLC"]
+        API["API de Predicción - FastAPI<br>Endpoints: /predict y /health"]
+        Models
+  end
+ subgraph Physical["Sistema físico RCE - Radiative Collector and Emitter"]
+    direction TB
+        PLC["PLC Siemens<br>Lógica industrial y SCADA"]
+        Act["Actuadores<br>Bombas B1 y B2<br>Electroválvulas EV1 EV2 EV5<br>Cubierta móvil de vidrio"]
+        RCE["RCE - Radiative Collector and Emitter<br>Colector solar térmico (día)<br>Enfriamiento radiativo (noche)"]
+        Tanks["Depósitos<br>Cold Tank<br>Hot Tank - ACS"]
+        Sens["Sensores<br>Temperaturas radiación viento lluvia etc"]
+  end
+    SC <--> API
+    API --> DLTank & DLDemand & Weather & Prod
+    PLC --> Act
+    Act --> RCE
+    RCE --> Tanks
+    Tanks --> Sens
+    PLC <--> Sens
+    PLC L_PLC_DB_0@-- Lecturas sensores y estados --> DB
+    DB -- Ventana histórica --> SC
+    SC -- Telemetría y decisiones --> Logs
+    SC -- Comandos modo HOT y COLD<br>ON y OFF<br>Cubierta --> PLC
+    PLC -- Estados y feedback --> SC
+
+     DB:::box
+     Logs:::box
+     DLTank:::box
+     DLDemand:::box
+     Weather:::box
+     Prod:::box
+     SC:::key
+     API:::key
+     PLC:::key
+     Act:::box
+     RCE:::box
+     Tanks:::box
+     Sens:::box
+    classDef box fill:#ffffff,stroke:#333,stroke-width:1px,color:#111
+    classDef group fill:#f7f7f7,stroke:#999,stroke-width:1px,color:#111
+    classDef key fill:#eef5ff,stroke:#2b6cb0,stroke-width:1px,color:#0b2545
+    classDef ext fill:#fff7ed,stroke:#c2410c,stroke-width:1px,color:#3a1d00
+    style Software color:#000000,stroke:#FF6D00
+
+    L_PLC_DB_0@{ curve: linear }

@@ -1,0 +1,48 @@
+flowchart LR
+  %% ===== Estilos =====
+  classDef box fill:#ffffff,stroke:#333,stroke-width:1px,color:#111;
+  classDef key fill:#eef5ff,stroke:#2b6cb0,stroke-width:1px,color:#0b2545;
+  classDef group fill:#f7f7f7,stroke:#999,stroke-width:1px,color:#111;
+  classDef data fill:#fffaf0,stroke:#b45309,stroke-width:1px,color:#3a2500;
+
+  %% ===== Datos =====
+  subgraph Data["Datos y almacenamiento"]
+    direction TB
+    DB["Base de datos e histórico<br/>Variables del sistema"]:::data
+    Logs["Logs y CSV<br/>Telemetría y decisiones"]:::data
+  end
+  class Data group;
+
+  %% ===== Software =====
+  subgraph Software["Software AI-RCE"]
+    direction TB
+
+    SC["Supervisor de Control - SC<br/>Planificación HOT y COLD<br/>Decisión ON y OFF<br/>Seguridad lluvia y viento"]:::key
+
+    API["API de Predicción - FastAPI<br/>Endpoints: /predict y /health"]:::key
+
+    subgraph Models["Modelos y Predictores"]
+      direction TB
+      DLTank["DL-Tank - LSTM<br/>Predicción temperatura tanques"]:::box
+      DLDemand["DL-Demand - DNN<br/>Predicción demanda 24h"]:::box
+      Prod["RCE-Production<br/>Estimación producción RCE"]:::box
+      Weather["API-Weather<br/>Predicción meteorológica"]:::box
+    end
+    class Models group;
+
+    %% Flujo interno software
+    SC <--> API
+    API --> DLTank
+    API --> DLDemand
+    API --> Prod
+    API --> Weather
+  end
+  class Software group;
+
+  %% ===== Flujos de datos =====
+  DB -->|Ventana histórica| SC
+  SC -->|Telemetría y decisiones| Logs
+
+  %% ===== Servicios externos =====
+  ExtW["Servicios externos<br/>Open-Meteo u otros"]:::box
+  Weather <-->|Llamadas API| ExtW

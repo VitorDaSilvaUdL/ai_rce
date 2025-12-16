@@ -1,0 +1,67 @@
+---
+config:
+  layout: dagre
+  theme: neo
+---
+flowchart TB
+ subgraph SC["Supervisor de Control - SC"]
+    direction TB
+        SC1["Bucle de control (while True)<br>Tick cada N minutos"]
+        SC2["Leer estado e histórico<br>DB / CSV / sensores almacenados"]
+        SC3["Construir ventana de entrada<br>features para predicción"]
+        SC4["Llamar a API: /predict"]
+        SC5["Recibir predicciones<br>producción, demanda, meteo, tanques"]
+        SC6["get_decision()<br>comparar producción vs demanda<br>optimizar operación"]
+        SC7{"¿Acción requerida?"}
+        SC8["Aplicar acción<br>modo HOT/COLD, ON/OFF, cubierta"]
+        SC9["Sin actuación"]
+        SC10["Registrar telemetría y decisión<br>logs / CSV"]
+        SC11["Sleep hasta siguiente tick<br>Esperar N minutos"]
+  end
+ subgraph API["API de Predicción - FastAPI"]
+    direction TB
+        A0["Recibir solicitud /predict"]
+        A1["Validar payload<br>esquema y tamaño ventana"]
+        A2["Preparar datos internos<br>normalización / features"]
+        A3["Ejecutar predictores<br>DL-Tank, DL-Demand,<br>API-Weather, RCE-Production"]
+        A4["Agregar resultados<br>formato JSON"]
+        A5["Responder al SC"]
+  end
+    SC1 --> SC2
+    SC2 --> SC3
+    SC3 --> SC4
+    SC4 --> SC5 & A0
+    SC5 --> SC6
+    SC6 --> SC7
+    SC7 -- Sí --> SC8
+    SC7 -- No --> SC9
+    SC8 --> SC10
+    SC9 --> SC10
+    SC10 --> SC11
+    SC11 --> SC1
+    A0 --> A1
+    A1 --> A2
+    A2 --> A3
+    A3 --> A4
+    A4 --> A5
+    A5 --> SC5
+
+     SC1:::key
+     SC2:::box
+     SC3:::box
+     SC4:::key
+     SC5:::box
+     SC6:::key
+     SC7:::box
+     SC8:::box
+     SC9:::box
+     SC10:::box
+     SC11:::key
+     A0:::key
+     A1:::box
+     A2:::box
+     A3:::box
+     A4:::box
+     A5:::key
+    classDef box fill:#ffffff,stroke:#333,stroke-width:1px,color:#111
+    classDef key fill:#eef5ff,stroke:#2b6cb0,stroke-width:1px,color:#0b2545

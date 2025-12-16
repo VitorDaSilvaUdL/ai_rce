@@ -47,56 +47,9 @@ Sensores / PLC / Base de datos
        Sistema RCE
 ```
 
-flowchart TB
-  %% ====== System: BOOST-RCE (Radiative Collector and Emitter) + AI Control ======
+![Arquitectura del software AI-RCE](docs/images/diagrama_rce_software.png)
 
-  subgraph Physical["Sistema físico RCE (Radiative Collector and Emitter)"]
-    RCE["RCE (Radiative Collector and Emitter)\nColector solar térmico (día)\nEnfriamiento radiativo (noche)"]
-    Tanks["Depósitos\n• Cold Tank\n• Hot Tank (ACS)"]
-    Act["Actuadores\nBombas (B1/B2)\nElectroválvulas (EV1/EV2/EV5)\nCubierta móvil de vidrio"]
-    Sens["Sensores\nTemperaturas, radiación, viento, lluvia, etc."]
-    PLC["PLC (Siemens)\nLógica industrial + SCADA"]
-    RCE --> Tanks
-    Tanks --> Sens
-    PLC <--> Sens
-    PLC --> Act
-    Act --> RCE
-  end
-
-  subgraph Software["Software AI-RCE (este repositorio)"]
-    SC["Supervisor de Control (SC)\n• Planificación HOT/COLD\n• Decisión ON/OFF\n• Seguridad (lluvia/viento)\n• Escritura al PLC"]
-    API["API de Predicción (FastAPI)\n/predict + /health"]
-    subgraph Models["Modelos / Predictores"]
-      DLTank["DL-Tank (LSTM)\nPredicción temperatura tanques"]
-      DLDemand["DL-Demand (DNN)\nPredicción demanda (24h)"]
-      Weather["API-Weather\nPredicción meteorológica"]
-      Prod["RCE-Production\nEstimación producción RCE"]
-    end
-    API --> DLTank
-    API --> DLDemand
-    API --> Weather
-    API --> Prod
-    SC <--> API
-  end
-
-  subgraph Data["Datos y almacenamiento"]
-    DB["Base de datos / histórico\n(variables del sistema)"]
-    Logs["Logs / CSV\ntelemetría y decisiones"]
-  end
-
-  %% Data flows
-  PLC -->|Lecturas (sensores/estados)| DB
-  DB -->|Ventana histórica| SC
-  SC -->|Telemetría/decisiones| Logs
-
-  %% Control loop
-  SC -->|Comandos (modo HOT/COLD,\nON/OFF, cubierta)| PLC
-  PLC -->|Estados/feedback| SC
-
-  %% External
-  ExtW["Servicios externos\n(Open-Meteo u otros)"]
-  Weather <-->|Llamadas API| ExtW
-
+Ver diagrama detallado en [`docs/architecture.md`](docs/architecture.md)
 
 ---
 
