@@ -1,115 +1,193 @@
-# Sistema de Control Térmico: Solar Heating & Radiative Cooling
+# AI-RCE — Control predictivo para sistemas híbridos basados en Radiative Collector and Emitter (RCE)
 
-Este proyecto implementa un sistema de control inteligente para una instalación solar-térmica y de radiative cooling.
-El sistema tiene dos partes:
+Repositorio de software para **predicción, supervisión y control inteligente** de un sistema híbrido basado en el concepto **RCE (Radiative Collector and Emitter)**, desarrollado en el marco del proyecto estatal **BOOST-RCE (TED2021-131446B-I00)**.
 
-1. Una API de predicción (machine learning) que genera demanda y producción futuras.
-2. El software de control que toma decisiones en tiempo real y comunica estados al PLC mediante SNAP7.
+---
+
+## Contexto del proyecto BOOST-RCE
+
+El proyecto **BOOST-RCE** ha permitido optimizar el rendimiento del concepto innovador **RCE (Radiative Collector and Emitter)**, un sistema capaz de generar **calor y frío durante las 24 horas del día** con **emisiones de CO₂ nulas**. El RCE combina **captación solar térmica diurna** y **enfriamiento radiativo nocturno** para producir energía térmica por encima o por debajo de la temperatura ambiente, respectivamente.
+
+Sus principales ventajas competitivas incluyen la **doble generación de energía renovable**, la **modularidad**, la **escalabilidad** y la **capacidad de integración con sistemas convencionales de climatización**, contribuyendo a incrementar la eficiencia energética y a reducir tanto el consumo como las emisiones asociadas.
+
+Con el fin de maximizar la producción de frío nocturno, el sistema incorpora una **cubierta de polietileno de baja densidad (30 μm)** con elevada transmitancia en la **ventana atmosférica infrarroja (7–14 μm)**, donde la atmósfera presenta alta transparencia. Asimismo, se ha desarrollado un **sistema de control lógico inteligente** capaz de optimizar la operación diurna y nocturna. Este sistema compara las **predicciones de producción y demanda** y gestiona la activación de una **cubierta móvil de vidrio** en función de las condiciones ambientales y operativas, con el objetivo de **minimizar el consumo energético** e identificar los **intervalos de máxima eficiencia**.
+
+Los ensayos realizados muestran que el RCE es capaz de alcanzar **temperaturas de agua entre 7,4 °C y 8,1 °C por debajo de la temperatura ambiente**. Paralelamente, los **modelos de predicción basados en técnicas de Deep Learning** han sido validados, proporcionando estimaciones precisas de producción y demanda, lo que permite **optimizar la operación futura del sistema** e identificar escenarios de mayor rendimiento.
+
+Los resultados del proyecto evidencian que el RCE posee un **alto potencial para reducir el consumo de combustibles fósiles y el uso de agua**, así como para mejorar la **seguridad del suministro energético**. Su carácter distribuido disminuye las pérdidas por transporte y contribuye a la estabilidad de precios. En conjunto, el sistema RCE constituye una **tecnología limpia** que mejora el confort térmico, fortalece la sostenibilidad y amplía las posibilidades tecnológicas en los sectores de **climatización y energías renovables**.
+
+---
+
+## Descripción del software
+
+Este repositorio implementa un **sistema de control predictivo basado en Machine Learning** que permite:
+
+- Predecir la **producción térmica (frío/calor)** del sistema RCE.
+- Predecir la **demanda energética** del edificio.
+- Incorporar **predicciones meteorológicas** relevantes.
+- Tomar decisiones automáticas de operación mediante un **Supervisor de Control (SC)**.
+- Integrarse con un **PLC Siemens** para la operación del prototipo experimental.
+
+El software ha sido validado sobre un **sistema RCE real**, combinando modelos de Deep Learning con control lógico industrial.
+
+---
+
+## Arquitectura del sistema
+
+```
+Sensores / PLC / Base de datos
+            ↓
+   Supervisor de Control (SC)
+            ↓
+      API de Predicción
+   (FastAPI + Modelos ML)
+            ↓
+          PLC
+            ↓
+       Sistema RCE
+```
+
+flowchart TB
+  %% ====== System: BOOST-RCE (Radiative Collector and Emitter) + AI Control ======
+
+  subgraph Physical["Sistema físico RCE (Radiative Collector and Emitter)"]
+    RCE["RCE (Radiative Collector and Emitter)\nColector solar térmico (día)\nEnfriamiento radiativo (noche)"]
+    Tanks["Depósitos\n• Cold Tank\n• Hot Tank (ACS)"]
+    Act["Actuadores\nBombas (B1/B2)\nElectroválvulas (EV1/EV2/EV5)\nCubierta móvil de vidrio"]
+    Sens["Sensores\nTemperaturas, radiación, viento, lluvia, etc."]
+    PLC["PLC (Siemens)\nLógica industrial + SCADA"]
+    RCE --> Tanks
+    Tanks --> Sens
+    PLC <--> Sens
+    PLC --> Act
+    Act --> RCE
+  end
+
+  subgraph Software["Software AI-RCE (este repositorio)"]
+    SC["Supervisor de Control (SC)\n• Planificación HOT/COLD\n• Decisión ON/OFF\n• Seguridad (lluvia/viento)\n• Escritura al PLC"]
+    API["API de Predicción (FastAPI)\n/predict + /health"]
+    subgraph Models["Modelos / Predictores"]
+      DLTank["DL-Tank (LSTM)\nPredicción temperatura tanques"]
+      DLDemand["DL-Demand (DNN)\nPredicción demanda (24h)"]
+      Weather["API-Weather\nPredicción meteorológica"]
+      Prod["RCE-Production\nEstimación producción RCE"]
+    end
+    API --> DLTank
+    API --> DLDemand
+    API --> Weather
+    API --> Prod
+    SC <--> API
+  end
+
+  subgraph Data["Datos y almacenamiento"]
+    DB["Base de datos / histórico\n(variables del sistema)"]
+    Logs["Logs / CSV\ntelemetría y decisiones"]
+  end
+
+  %% Data flows
+  PLC -->|Lecturas (sensores/estados)| DB
+  DB -->|Ventana histórica| SC
+  SC -->|Telemetría/decisiones| Logs
+
+  %% Control loop
+  SC -->|Comandos (modo HOT/COLD,\nON/OFF, cubierta)| PLC
+  PLC -->|Estados/feedback| SC
+
+  %% External
+  ExtW["Servicios externos\n(Open-Meteo u otros)"]
+  Weather <-->|Llamadas API| ExtW
+
+
+---
+
+## Estructura del repositorio
+
+```
+ai_rce/
+├── api/                # API de predicción (FastAPI)
+├── sc/                 # Supervisor de Control
+├── docs/               # Documentación técnica y referencias
+├── tests/              # Tests unitarios
+├── watchdog_sc.py      # Watchdog del sistema
+└── README.md
+```
+
+---
+
+## Requisitos
+
+- Python ≥ 3.10  
+- TensorFlow / Keras  
+- FastAPI  
+- snap7 (integración con PLC Siemens)  
+- Acceso a PLC real o entorno de simulación  
+
+Dependencias:
+- `api/requirements.txt`
+- `sc/requirements.txt`
+
+---
 
 ## Instalación
 
-### Crear entorno virtual
-```
-python -m venv venv
-```
-
-### Instalar dependencias
-```
+### API de predicción
+```bash
+cd api
+python -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
+### Supervisor de Control
+```bash
+cd sc
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+---
+
 ## Ejecución
 
-### 1. Iniciar API de predicción
-```
+### Arranque de la API
+```bash
 python -m api.main
 ```
 
-### 2. Iniciar software de control
+Health check:
 ```
+GET http://localhost:8000/health
+```
+
+### Arranque del Supervisor de Control
+```bash
+export SC_ENV=test   # o prod
 python -m sc.main
 ```
 
-### 3. Iniciar software watchdog
-```
-python watchdog.py
-```
+---
 
-## Funcionamiento del algoritmo
+## Configuración
 
-El sistema opera en dos modos:
-- HOT (7:00–18:59): genera calor aprovechando radiación solar.
-- COLD (19:00–06:59): genera frío mediante radiative cooling nocturno.
+La configuración se gestiona mediante ficheros `config.{env}.json` en `sc/`.
 
-Cada día calcula demanda y producción prevista, selecciona franjas óptimas y cada 5 segundos decide si encender, mantener o parar el sistema. Se supervisan alarmas de lluvia y viento que pueden forzar cierre inmediato.
+⚠️ **Antes de publicar el repositorio**:
+- Eliminar credenciales sensibles.
+- Usar variables de entorno o ficheros plantilla (`config.template.json`).
 
-## Ciclo principal (diagrama)
+---
 
-```mermaid
-flowchart TD
+## Reproducibilidad y limitaciones
 
-    A[Inicio del ciclo] --> B[Llamar get_decision]
+- Parte de los datos de demanda pueden ser simulados (TRNSYS).
+- La validación completa depende de condiciones meteorológicas reales.
+- El sistema está diseñado para **investigación y prototipos pre-industriales**.
 
-    B --> C{Respuesta de la API}
+---
 
-    C --> D1[yes]
-    C --> D2[no]
-    C --> D3[parada]
+## Referencias
 
-    %% YES
-    D1 --> E1[plc.get_system_state]
-    E1 --> F1[decide_next_state_from_nn con yes]
-    F1 --> G1[final_write_to_plc_nn_mode]
-    G1 --> H1[set_heat_mode o set_cold_mode]
-    H1 --> I1[sequence_obrir o sequence_tancar]
-    I1 --> Z[Esperar 5s y repetir]
-
-    %% NO
-    D2 --> E2[plc.get_system_state]
-    E2 --> F2[decide_next_state_from_nn con no]
-    F2 --> G2[final_write_to_plc_nn_mode manteniendo estado]
-    G2 --> Z
-
-    %% PARADA
-    D3 --> E3[plc.get_system_state]
-    E3 --> F3[decide_next_state_from_nn parada]
-    F3 --> G3[final_write_to_plc_nn_mode Parada]
-    G3 --> H3[set_parada_mode]
-    H3 --> I3[sequence_tancar]
-    I3 --> Z
-```
-
-
-
-```
-Preguntar Albert
-# ---------------------------------------------------------------------------
-# Mapa lógico de variables -> VarName(s) reales + CSV donde buscar
-#   source: ruta completa al CSV
-#   varnames: lista de posibles nombres en la columna VarName
-# ---------------------------------------------------------------------------
-VARIABLE_SOURCES = {
-    "hot": {
-        "varnames": ["TempT6_RCEa", "TempT6_RCEa_v2"],
-        "source": lect_dir,   # temperatura caliente
-    },
-    "cold": {
-        "varnames": ["TempT9_RCEa", "TempT9_RCEa_v2"],
-        "source": lect_dir,   # temperatura fría
-    },
-    "v_vent": {
-        "varnames": ["VelVent_RCEa", "VelVent_RCEa_v2"],
-        "source": lect_dir,   # velocidad viento
-    },
-    "solar": {
-        "varnames": ["IO_SENSOR1_DATA_RCEa"],
-        "source": solar_dir,  # radiación solar
-    },
-    "ir": {
-        "varnames": ["E_FIR, neto, [W/m2]_RCEb"],
-        "source": ir_dir,     # radiación IR neta
-    },
-}
-```
-
-https://api.open-meteo.com/v1/forecast?latitude=41.62&longitude=0.62&hourly=terrestrial_radiation
+- Proyecto **BOOST-RCE (TED2021-131446B-I00)** — Ministerio de Ciencia e Innovación, España  
+- Vall et al., *Combined Radiative Cooling and Solar Thermal*, **Radiative Collector and Emitter (RCE)**, Energies, 2020  
+- Trabajos Fin de Grado y Máster asociados al proyecto (Universitat de Lleida)
