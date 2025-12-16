@@ -47,11 +47,23 @@ Sensores / PLC / Base de datos
        Sistema RCE
 ```
 
+
 ![Arquitectura del software AI-RCE](docs/images/diagrama_rce_software.png)
 
 Ver diagrama detallado en [`docs/architecture.md`](docs/architecture.md)
 
 ---
+
+## Bucle de control del Supervisor de Control (SC)
+
+El Supervisor de Control (SC) opera mediante un **bucle periódico de decisión** (tick configurable),
+en el que integra estado histórico, predicciones basadas en *Machine Learning* y lógica de control
+para decidir la operación óptima del sistema RCE.
+
+![Diagrama de secuencia del bucle del SC](docs/images/sequence_sc.png)
+
+Para una descripción detallada del funcionamiento y de la lógica `get_decision`,
+consulte el documento [`docs/architecture.md`](docs/architecture.md).
 
 ## Estructura del repositorio
 
