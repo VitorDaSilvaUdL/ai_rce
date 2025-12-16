@@ -20,7 +20,7 @@ La siguiente figura muestra la arquitectura completa del sistema, integrando:
 - La API de predicción y los modelos de *Deep Learning*.
 - El almacenamiento de datos y la telemetría.
 
-![Arquitectura completa del sistema RCE](images/diagrama_rce_full.png)
+![Arquitectura completa del sistema RCE](images/diagrama_rce_full_white.png)
 
 ### Descripción general
 
@@ -111,5 +111,4 @@ El flujo interno de la API es el siguiente:
 
 ### Diagrama de flujo de la API
 
-![Diagrama de flujo de la API de Predicción](images/diagrama_flow_api.png)
-
+![Diagrama de flujo de la API de Predicción](images/diagrama_flow_api_white.png)
