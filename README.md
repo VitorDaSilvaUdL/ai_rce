@@ -47,6 +47,7 @@ Sensores / PLC / Base de datos
        Sistema RCE
 ```
 
+```mermaid
 flowchart TB
   %% ====== System: BOOST-RCE (Radiative Collector and Emitter) + AI Control ======
 
@@ -97,7 +98,7 @@ flowchart TB
   ExtW["Servicios externos\n(Open-Meteo u otros)"]
   Weather <-->|Llamadas API| ExtW
 
-
+```
 ---
 
 ## Estructura del repositorio
