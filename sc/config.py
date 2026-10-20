@@ -2,6 +2,8 @@ import os
 import json
 from pathlib import Path
 
+from sc.credentials import get_secret, real
+
 # Carpeta donde está este fichero
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -37,6 +39,7 @@ SMTP_ENABLED = SMTP_CONFIG.get("enabled", False)
 SMTP_FROM = SMTP_CONFIG.get("from")
 SMTP_TO = SMTP_CONFIG.get("to")  # puede ser string o lista
 SMTP_USER = SMTP_CONFIG.get("user")
-SMTP_PASSWORD = SMTP_CONFIG.get("password")
+# La contraseña no se versiona: variable SC_SMTP_PASSWORD o sc/secrets.local.json (ver sc/credentials.py)
+SMTP_PASSWORD = real(SMTP_CONFIG.get("password")) or get_secret("smtp_password")
 SMTP_SUBJECT = SMTP_CONFIG.get("subject", "ALERTA Sistema RCE")
 SMTP_MIN_LEVEL = SMTP_CONFIG.get("min_level", "WARNING")
