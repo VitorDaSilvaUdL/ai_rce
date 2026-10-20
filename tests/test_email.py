@@ -2,9 +2,11 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
+from sc.credentials import get_secret
+
 # Credenciales proporcionadas
 EMAIL_USER = "rce.ai.udl@gmail.com"
-EMAIL_PASS = "qwcj ttpt oqzd nsds"  # Contraseña de aplicación generada en Gmail
+EMAIL_PASS = get_secret("smtp_password")  # contraseña de aplicación: SC_SMTP_PASSWORD o sc/secrets.local.json
 
 # Destinatario (puede ser el mismo para pruebas)
 EMAIL_TO = "vitor.dasilva@udl.cat,joseplluis.lerida@udl.cat"
@@ -38,4 +40,6 @@ def enviar_email_test():
 
 
 if __name__ == "__main__":
+    if not EMAIL_PASS:
+        raise SystemExit("Falta la contraseña: SC_SMTP_PASSWORD o sc/secrets.local.json")
     enviar_email_test()
