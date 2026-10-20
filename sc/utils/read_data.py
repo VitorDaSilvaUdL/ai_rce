@@ -7,13 +7,12 @@ import json
 from sc.logger import get_logger
 logger = get_logger(__name__)
 
-# lect_dir = r"C:\Users\Usuari\Documents\RCE\lecturas0.csv"
-# solar_dir = r"C:\Users\Usuari\Documents\RCE\Solarimeter0.csv"
-# ir_dir = r"C:\Users\Usuari\Documents\RCE\Pyrgeometer0.csv"
+from sc import config
 
-lect_dir = r"C:\Users\PcVIP\OneDrive - udl.cat\Investigacion\CREA\ai_rce\CSVs\Lecturas0.csv"
-solar_dir = r"C:\Users\PcVIP\OneDrive - udl.cat\Investigacion\CREA\ai_rce\CSVs\Solarimeter0.csv"
-ir_dir = r"C:\Users\PcVIP\OneDrive - udl.cat\Investigacion\CREA\ai_rce\CSVs\Pyrgeometer0.csv"
+# CSV de WinCC: rutas de config.<env>.json (sc.lect_dir, sc.solar_dir, sc.ir_dir)
+lect_dir = config.LECT_DIR
+solar_dir = config.SOLAR_DIR
+ir_dir = config.IR_DIR
 
 def get_indices(dfn, n, size):
     last = len(dfn) - 1

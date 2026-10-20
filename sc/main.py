@@ -18,8 +18,13 @@ from .plc_controller import PLCController
 
 from sc.config import (
     PREDICT_URL, P_BOMBA_WATTS, MIN_TIME_STEP,
-    PLC_IP, PLC_RACK, PLC_SLOT, OUTPUT_CSV, ITER_TIME_SEC
+    PLC_IP, PLC_RACK, PLC_SLOT, OUTPUT_CSV, ITER_TIME_SEC,
+    PLC_CONFIG, OUTPUT_CSV_PATH
 )
+from sc.plc_shadow import make_plc
+from sc import cycle_log
+
+last_decision_row = None  # fila de get_decision() del ciclo en curso (DECISION_HEADER)
 
 # logger.setLevel(logging.DEBUG)
 
@@ -318,9 +323,10 @@ def plan_mode(
 def get_decision():
     global system_data, last_prediction_update_day, total_predicted_production
     global selected_time_frames, current_dem_target, dem_data, prod_data
-    global action, mode
+    global action, mode, last_decision_row
 
     now = datetime.now().replace(microsecond=0)
+    last_decision_row = None
 
     # Valor seguro por defecto (por si algo peta antes de asignar nada)
     safe_response = {"respuesta": "parada"}
@@ -525,21 +531,8 @@ def get_decision():
         l.append(get_now_val_2(dem_data['hot_dem']))
         l.append(get_now_val_2(dem_data['cold_dem']))
 
-        es_nou_fitxer = not os.path.exists("dades.csv") or os.path.getsize("dades.csv") == 0
-        capsaleres = [
-            'timestamp', 'in_time_frame', 'current_dem_target',
-            'action', 'mode', 'hot_prod', 'cold_prod', 'hot_dem', 'cold_dem'
-        ]
-
-        logger.info("Write data to dades.csv")
-        try:
-            with open('dades.csv', mode='a', newline='', encoding='utf-8') as fitxer:
-                escriptor = csv.writer(fitxer)
-                if es_nou_fitxer:
-                    escriptor.writerow(capsaleres)
-                escriptor.writerow(l)
-        except Exception:
-            logger.exception(f"{now}: Error escrivint al CSV dades.csv")
+        # La fila se escribe en run_cycle(), junto con el estado del PLC (aplicado o simulado)
+        last_decision_row = l
 
         logger.info(
             f"{now}: Estat final de la bomba per a aquest cicle: "
@@ -555,9 +548,8 @@ def get_decision():
         logger.exception(f"{now}: Error inesperat a get_decision(). Retornant 'parada'.")
         return safe_response
 
-# crearla en tu App
-# plc = PLCController(ip="172.17.10.110", rack=0, slot=1)
-plc = PLCController(ip="127.0.0.1", rack=0, slot=1)
+# PLC según config: plc.mode = "shadow" (por defecto, PLCShadow: no se conecta ni escribe) o "real"
+plc = make_plc(PLC_CONFIG)
 
 mode_actions = {
     "hot": plc.set_heat_mode,
@@ -565,6 +557,55 @@ mode_actions = {
     "parada": plc.set_parada_mode,
     "automatic": plc.set_automatic_mode,
 }
+
+def run_cycle(plc, out_path=OUTPUT_CSV_PATH):
+    """Un ciclo de control: decisión de la IA, nuevo estado del PLC (aplicado o, en modo sombra,
+    solo simulado) y una fila en dades.csv con la decisión, el modo y la posición de la tapa."""
+    # 1) Obtener decision de la logica de control
+    respuesta_nn = get_decision()
+    respuesta_nn = respuesta_nn["respuesta"]
+    logger.info(f"nn_result: {respuesta_nn}")
+
+    # 2) Leer estado actual del PLC (virtual en modo sombra)
+    estado_actual, combinaciones = plc.get_system_state()
+
+    # 3) Calcular nuevo estado a partir de la respuesta de la IA
+    nuevo_estado = plc.decide_next_state_from_nn(respuesta_nn, estado_actual)
+
+    # AVISO: solo si la IA dice "si" y el estado realmente cambia
+    if respuesta_nn == "si" and nuevo_estado != estado_actual:
+        if plc.execution == "shadow":
+            logger.info(
+                f"RCE (SOMBRA) - la IA cambiaría de estado: {estado_actual} -> {nuevo_estado}. "
+                f"No se aplica en el PLC."
+            )
+        else:
+            logger.warning(
+                f"RCE - CAMBIO DE ESTADO.\n"
+                f"Estado anterior: {estado_actual}\n"
+                f"Estado nuevo:     {nuevo_estado}\n"
+                f"Se procede a aplicar el cambio en el PLC."
+            )
+
+    # 4) Escribir nuevo estado en el PLC (PLCShadow solo actualiza su estado virtual)
+    plc.final_write_to_plc_nn_mode(nuevo_estado, combinaciones)
+
+    # 5) dades.csv: decisión + estado + tapa (medida con los finales de carrera solo en modo real)
+    try:
+        cover_measured = plc.read_cover_position() if plc.execution == "real" else ""
+    except Exception:
+        logger.exception("No se ha podido leer la posición de la tapa")
+        cover_measured = ""
+    try:
+        cycle_log.write_cycle_row(
+            out_path, last_decision_row,
+            cycle_log.state_columns(plc.execution, estado_actual, nuevo_estado,
+                                    cover_measured=cover_measured, alarm=plc.alarm_active),
+        )
+    except Exception:
+        logger.exception(f"Error escribiendo {out_path}")
+    return nuevo_estado
+
 
 def stop():
     # Funcion de parada segura del sistema
@@ -661,28 +702,7 @@ if __name__ == '__main__':
         write_heartbeat()  # latido del sistema
         logger.info("Nuevo ciclo de control")
 
-        # 1) Obtener decision de la logica de control
-        respuesta_nn = get_decision()
-        respuesta_nn = respuesta_nn["respuesta"]
-        logger.info(f"nn_result: {respuesta_nn}")
-
-        # 2) Leer estado actual del PLC
-        estado_actual, combinaciones = plc.get_system_state()
-
-        # 3) Calcular nuevo estado a partir de la respuesta de la IA
-        nuevo_estado = plc.decide_next_state_from_nn(respuesta_nn, estado_actual)
-
-        # AVISO: solo si la IA dice "si" y el estado realmente cambia
-        if respuesta_nn == "si" and nuevo_estado != estado_actual:
-            logger.warning(
-                f"RCE - CAMBIO DE ESTADO.\n"
-                f"Estado anterior: {estado_actual}\n"
-                f"Estado nuevo:     {nuevo_estado}\n"
-                f"Se procede a aplicar el cambio en el PLC."
-            )
-
-        # 4) Escribir nuevo estado en el PLC
-        plc.final_write_to_plc_nn_mode(nuevo_estado, combinaciones)
+        run_cycle(plc)
 
         # Espera entre iteraciones del bucle de control
         sleep(60*15)  # version normal cada 15 minutos

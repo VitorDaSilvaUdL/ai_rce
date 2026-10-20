@@ -113,6 +113,7 @@ class PLCController:
     """
 
     TEST_MODE = False  # por defecto producción
+    execution = "real"  # columna execution de dades.csv (PLCShadow: "shadow")
 
     # Lista de alarmas: (nombre, db_number, byte_index, bit_index)
     ALARM_BITS = [
@@ -317,6 +318,21 @@ class PLCController:
         Usa el final de carrera FcOFFHorizontal: DB10.DBX0.1
         """
         return self.read_bool(10, 0, 1)
+
+    def read_cover_position(self) -> str:
+        """
+        Posición medida de la tapa horizontal según los finales de carrera:
+        'open', 'closed', 'moving' (ninguno activo) o 'error' (los dos activos).
+        """
+        fc_open = self.read_bool(10, 0, 0)
+        fc_closed = self.read_bool(10, 0, 1)
+        if fc_open and fc_closed:
+            return "error"
+        if fc_open:
+            return "open"
+        if fc_closed:
+            return "closed"
+        return "moving"
 
     def wait_for_th_position(self, expected: str, timeout_s: float = 60.0, poll_s: float = 0.5) -> bool:
         """
