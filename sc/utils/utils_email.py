@@ -14,9 +14,11 @@ import os
 # ---------------------------------------------------------------------
 # CONFIGURACIÓN
 # ---------------------------------------------------------------------
-# Se recomienda usar variables de entorno en vez de escribir aquí claves.
+# Las claves no se escriben aquí: variable GMAIL_APP_PASSWORD o sc/secrets.local.json (ver sc/credentials.py)
+from sc.credentials import get_secret
+
 GMAIL_USER = os.getenv("GMAIL_USER", "drdasilvaverbel@gmail.com")
-GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD", "Capivara03!")
+GMAIL_APP_PASSWORD = get_secret("gmail_app_password")
 
 
 def enviar_email_error(asunto: str, cuerpo: str, destinatario: str) -> bool:
