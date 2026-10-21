@@ -40,6 +40,8 @@ def build_context():
         root=root, state_dir=state_dir, wincc_dir=Path(sc_config.LECT_DIR).parent,
         dades_path=sc_config.OUTPUT_CSV_PATH, log_path=work / "sc.log", heartbeat_path=work / "heartbeat_sc.txt",
         config=cfg, supervisor=sup, mode=sc_config.PLC_MODE, api_health=health,
+        plc={"ip": sc_config.PLC_IP, "rack": sc_config.PLC_RACK, "slot": sc_config.PLC_SLOT},
+        sc_config_path=sc_config.CONFIG_FILE,
     )
 
 

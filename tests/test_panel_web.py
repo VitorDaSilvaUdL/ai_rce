@@ -31,6 +31,12 @@ class FakeSupervisor:
     def restart_one(self, name):
         self.calls.append(f"restart:{name}")
 
+    def stop_one(self, name):
+        self.calls.append(f"stop:{name}")
+
+    def start_one(self, name):
+        self.calls.append(f"start:{name}")
+
     def status(self, now=None):
         return {"wanted": self.wanted, "api": {"running": self.wanted, "restarts": 0, "last_exit_code": None},
                 "sc": {"running": self.wanted, "restarts": 0, "last_exit_code": None}, "events": []}
@@ -62,11 +68,22 @@ def ctx(tmp_path):
                                   "inputs": {"cold": 12.5}, "forecast": {"updated_day": now.day}, "plan": {},
                                   "decision": {"action": "no"}, "schedule": {"heat_start": "08:00:00"}})
     (tmp_path / "heartbeat_sc.txt").write_text(now.isoformat(), encoding="utf-8")
+    sc_cfg = tmp_path / "config.prod.json"
+    sc_cfg.write_text(json.dumps({"plc": {"mode": "shadow", "ip": "10.0.0.1", "rack": 0, "slot": 1}}), encoding="utf-8")
+    probe_result = {"ok": True, "ts": "2026-10-21 12:00:00", "ip": "10.0.0.1", "state": "Parada", "plc_mode": "parada",
+                    "cover": "closed", "alarms": {"lluvia": False, "viento": False}, "schedule_today": None,
+                    "pumps": {"b1": "off", "b2": "off", "ev1": "off", "ev2": "on"}}
+    exit_calls = []
     c = web.PanelContext(root=tmp_path, state_dir=state, wincc_dir=wincc, dades_path=tmp_path / "dades.csv",
+                         sc_config_path=sc_cfg, plc={"ip": "10.0.0.1", "rack": 0, "slot": 1},
+                         probe=lambda: dict(probe_result), port_users=lambda: [],
+                         apply_exit_state=lambda st: (exit_calls.append(st) or {"ok": True, "exit_state": st, "state_after": "AutomaticMode", "steps": []}),
                          log_path=tmp_path / "sc.log", heartbeat_path=tmp_path / "heartbeat_sc.txt",
                          config=Config(state / "panel_config.json"), supervisor=FakeSupervisor(),
                          mode="shadow", local_hosts={"testclient"}, service_state=lambda n: "running",
                          api_health=lambda: True, predict=fake_predict)
+    c.exit_calls = exit_calls
+    c.probe_result = probe_result
     return c
 
 
@@ -220,11 +237,73 @@ def test_settings_and_people(client, ctx):
     assert client.delete("/api/people/Albert").status_code == 409        # cannot remove yourself
 
 
-def test_mode_change_is_phase_3(client):
+def test_mode_real_needs_the_lock_the_word_and_a_live_plc(client, ctx):
+    login(client)
+    assert client.post("/api/mode", json={"mode": "real", "confirm": "REAL"}).status_code == 423
+    client.post("/api/lock/take")
+    assert client.post("/api/mode", json={"mode": "real", "confirm": "si"}).status_code == 422
+    assert client.post("/api/mode", json={"mode": "shadow"}).status_code == 409          # already shadow
+    ctx.probe_result["ok"] = False; ctx.probe_result["error"] = "timeout"
+    assert client.post("/api/mode", json={"mode": "real", "confirm": "REAL"}).status_code == 503
+    ctx.probe_result["ok"] = True
+    ctx.port_users = lambda: [4321]
+    assert client.post("/api/mode", json={"mode": "real", "confirm": "REAL"}).status_code == 409
+    ctx.port_users = lambda: []
+    r = client.post("/api/mode", json={"mode": "real", "confirm": "REAL"})
+    assert r.status_code == 200 and r.json()["mode"] == "real" and r.json()["plc"]["state"] == "Parada"
+    assert json.loads(ctx.sc_config_path.read_text(encoding="utf-8"))["plc"]["mode"] == "real"
+    assert ctx.supervisor.calls[-1] == "restart:sc" and ctx.mode == "real"
+    assert client.get("/api/me").json()["mode"] == "real"
+    s = client.get("/api/status").json()
+    assert s["mode"] == "real" and s["plc"]["ok"] and s["lights"]["plc"] == "ok"
+    d = client.get("/api/diary").json()
+    assert d[-1]["tipo"] == "modo" and "REAL" in d[-1]["texto"]
+
+
+def test_mode_back_to_shadow_applies_the_exit_state(client, ctx):
     login(client)
     client.post("/api/lock/take")
-    r = client.post("/api/mode", json={"mode": "real"})
-    assert r.status_code == 501
+    client.post("/api/settings", json={"exit_state": "parada"})
+    client.post("/api/mode", json={"mode": "real", "confirm": "REAL"})
+    r = client.post("/api/mode", json={"mode": "shadow"})
+    assert r.status_code == 200 and r.json()["mode"] == "shadow" and r.json()["exit"]["state_after"] == "AutomaticMode"
+    assert ctx.exit_calls == ["parada"]
+    assert ctx.supervisor.calls[-2:] == ["stop:sc", "start:sc"]
+    assert json.loads(ctx.sc_config_path.read_text(encoding="utf-8"))["plc"]["mode"] == "shadow"
+
+
+def test_real_commands_need_real_mode_pause_lock_and_confirmation(client, ctx, monkeypatch):
+    from tests.test_panel_plc_ops import FakeClient, closed
+    import snap7
+    from panel import plc_ops
+    monkeypatch.setattr(snap7.client, "Client", FakeClient)
+    monkeypatch.setattr(plc_ops.time, "sleep", lambda s: None)
+    login(client)
+    client.post("/api/lock/take")
+    assert client.post("/api/command", json={"command": "open_cover", "confirm": True}).status_code == 409   # shadow
+    client.post("/api/mode", json={"mode": "real", "confirm": "REAL"})
+    assert client.post("/api/command", json={"command": "open_cover", "confirm": True}).status_code == 409   # not paused
+    client.post("/api/control/pause", json={"paused": True})
+    assert client.post("/api/command", json={"command": "open_cover", "confirm": False}).status_code == 422
+    assert client.post("/api/command", json={"command": "fly", "confirm": True}).status_code == 422
+    ctx.plc_factory = lambda: plc_ops.ProgressPLC("10.0.0.1", 0, 1)
+    r = client.post("/api/command", json={"command": "automatic", "confirm": True})
+    assert r.status_code == 200 and r.json()["command"] == "automatic"
+    ctx.jobs.current().thread.join(5)
+    j = client.get("/api/job").json()
+    assert j["status"] == "done" and j["state_after"] == "AutomaticMode" and any(s["kind"] == "write" for s in j["steps"])
+    assert client.post("/api/job/abort").json()["ok"] is False
+    assert [a["accion"] for a in client.get("/api/actions").json()][-2:] == ["command:automatic", "job:abort"]
+    assert client.get("/api/diary").json()[-1]["tipo"] == "mando"
+
+
+def test_plc_read_permission(client, ctx):
+    login(client)
+    assert client.get("/api/plc").status_code == 403
+    client.post("/api/lock/take")
+    client.post("/api/settings", json={"plc_read_allowed": True})
+    r = client.get("/api/plc")
+    assert r.status_code == 200 and r.json()["state"] == "Parada"
 
 
 def test_history_and_events(client, ctx):

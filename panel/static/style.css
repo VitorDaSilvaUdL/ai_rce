@@ -153,3 +153,5 @@ a { color: var(--accent); }
 .reasons.small { font-size: 14px; margin: 6px 0; padding-left: 18px; }
 .reasons.small li { margin: 2px 0; font-size: 14px; }
 .table tr.hl td { background: var(--ok-bg); }
+.watermark[data-wm='REAL']::after { color: rgba(180, 35, 24, .22); }
+.steps li.error { color: var(--bad); font-weight: 700; }

@@ -12,7 +12,9 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from panel import alerts, dryrun, readers, simfull, simulator, wincc
+import json
+
+from panel import alerts, dryrun, plc_ops, readers, simfull, simulator, wincc
 from panel.auth import Lock, People, Sessions
 from panel.config import EXIT_STATES
 from panel.journal import Actions, Diary, DIARY_KINDS
@@ -27,7 +29,8 @@ LOCAL_HOSTS = {"127.0.0.1", "::1", "localhost"}
 class PanelContext:
     def __init__(self, root, state_dir, wincc_dir, dades_path, log_path, heartbeat_path, config, supervisor,
                  mode="shadow", local_hosts=None, service_state=readers.service_state, api_health=readers.api_health,
-                 hostname=None, service_runner=None, predict=None):
+                 hostname=None, service_runner=None, predict=None, plc=None, sc_config_path=None, probe=None,
+                 apply_exit_state=None, plc_factory=None, port_users=None):
         self.root = Path(root)
         self.state_dir = Path(state_dir)
         self.wincc_dir = Path(wincc_dir)
@@ -43,6 +46,16 @@ class PanelContext:
         self.hostname = hostname or socket.gethostname()
         self.service_runner = service_runner or (lambda args: subprocess.run(args, capture_output=True, text=True, timeout=30).returncode)
         self.predict = predict or self._http_predict
+        # --- PLC (phase 3): parameters from sc/config.<env>.json, operations injectable for tests
+        self.plc = plc or {"ip": "127.0.0.1", "rack": 0, "slot": 1}
+        self.sc_config_path = Path(sc_config_path) if sc_config_path else None
+        ip, rack, slot = self.plc["ip"], int(self.plc.get("rack", 0)), int(self.plc.get("slot", 1))
+        self.probe = probe or (lambda: plc_ops.probe(ip, rack, slot))
+        self.apply_exit_state = apply_exit_state or (lambda st: plc_ops.apply_exit_state(ip, rack, slot, st))
+        self.plc_factory = plc_factory or (lambda: plc_ops.ProgressPLC(ip, rack, slot))
+        self.port_users = port_users or plc_ops.port_users
+        self.jobs = plc_ops.JobRunner()
+        self._probe_cache = (None, None)
         self.people = People(config.path)
         self.sessions = Sessions()
         self.lock = Lock()
@@ -58,6 +71,22 @@ class PanelContext:
         r = requests.post(url, json=samples, headers={"Content-Type": "application/json"}, timeout=90)
         r.raise_for_status()
         return r.json()
+
+    def probe_cached(self, max_age_s=60):
+        ts, result = self._probe_cache
+        if ts is None or (datetime.now() - ts).total_seconds() > max_age_s:
+            result = self.probe()
+            self._probe_cache = (datetime.now(), result)
+        return result
+
+    def set_plc_mode(self, mode):
+        """plc.mode in the control's config file (the control reads it when it starts)."""
+        if self.sc_config_path:
+            cfg = json.loads(self.sc_config_path.read_text(encoding="utf-8"))
+            cfg.setdefault("plc", {})["mode"] = mode
+            self.sc_config_path.write_text(json.dumps(cfg, indent=2, ensure_ascii=False), encoding="utf-8")
+        self.mode = mode
+        self._probe_cache = (None, None)
 
     # --- cached reading of the WinCC archives (re-parsed only when a file grows)
     def readings(self, hours, max_bytes=2_000_000):
@@ -127,10 +156,17 @@ class Settings(BaseModel):
     exit_state: Optional[str] = None
     autostart: Optional[bool] = None
     refresh_s: Optional[int] = Field(default=None, ge=3, le=120)
+    plc_read_allowed: Optional[bool] = None
 
 
 class ModeRequest(BaseModel):
     mode: str
+    confirm: str = ""
+
+
+class CommandRequest(BaseModel):
+    command: str
+    confirm: bool = False
 
 
 # ----------------------------------------------------------------------------------------------- helpers
@@ -239,13 +275,16 @@ def create_app(ctx: PanelContext) -> FastAPI:
         api_running = sup["api"]["running"] or not sup["wanted"]
         api_ok = ctx.api_health() if sup["api"]["running"] else (not sup["wanted"])
         flow = _pick(latest, "flow_rce_l_min")
+        plc = ctx.probe_cached(60) if ctx.mode == "real" else None
+        plc_alarm = bool(plc and plc.get("ok") and any((plc.get("alarms") or {}).values()))
         active = alerts.evaluate({
             "now": now, "mode": ctx.mode, "wincc_last_write": wincc_last,
             "series": {k: v for k, v in series.items() if k[0] in wincc.MAIN_VARIABLES},
             "heartbeat_age_s": hb, "sc_running": sup["sc"]["running"] or not sup["wanted"],
             "api_running": api_running, "api_ok": api_ok, "status": status or {},
             "filebeat": fb, "disk_free_gb": readers.disk_free_gb(ctx.root),
-            "plc_alarm": False, "cover_measured": (status or {}).get("cover_measured", ""),
+            "plc_alarm": plc_alarm,
+            "cover_measured": (plc or {}).get("cover") or (status or {}).get("cover_measured", ""),
             "flow_l_min": flow.value if flow else None,
         })
         if not sup["wanted"]:
@@ -260,6 +299,15 @@ def create_app(ctx: PanelContext) -> FastAPI:
             "sc": ("ok" if sup["sc"]["running"] and hb is not None and hb < alerts.SC_DEAD_S else "bad") if sup["wanted"] else "stopped",
             "filebeat": {"running": "ok", "stopped": "bad", "missing": "missing"}.get(fb, "unknown"),
         }
+        if plc is not None:
+            lights["plc"] = "ok" if plc.get("ok") else "bad"
+            if plc.get("ok") and not plc_alarm and ctx.mode == "real":
+                pass
+            elif plc.get("ok") and plc_alarm:
+                lights["plc"] = "alarm"
+        if ctx.mode == "real" and plc and not plc.get("ok"):
+            active.insert(0, alerts.Alert("plc_down", "critical", "El PLC no responde", "Comprobar la red con el PLC; el control no puede actuar",
+                                          plc.get("error", "")))
         readings = []
         for var in wincc.MAIN_VARIABLES:
             r = _pick(latest, var)
@@ -271,7 +319,8 @@ def create_app(ctx: PanelContext) -> FastAPI:
             "wincc": {"last_write": _iso(wincc_last), "age_s": wincc_age, "folder": str(ctx.wincc_dir)},
             "control": status, "heartbeat_age_s": hb, "filebeat": fb, "lights": lights,
             "readings": readings, "alerts": [a.as_dict() for a in active],
-            "refresh_s": ctx.config.get("refresh_s"),
+            "refresh_s": ctx.config.get("refresh_s"), "plc": plc, "job": ctx.jobs.status(),
+            "plc_ip": ctx.plc["ip"],
         }
 
     @app.get("/api/status")
@@ -524,6 +573,81 @@ def create_app(ctx: PanelContext) -> FastAPI:
     def post_mode(body: ModeRequest, request: Request):
         u = require_user(request)
         require_lock(u)
-        raise HTTPException(501, "El cambio de modo (REAL) se activa en la fase 3, con autorización del equipo")
+        target = body.mode.strip().lower()
+        if target not in ("real", "shadow"):
+            raise HTTPException(422, "Modo desconocido")
+        if target == ctx.mode:
+            raise HTTPException(409, f"Ya está en modo {'REAL' if target == 'real' else 'SOMBRA'}")
+        if ctx.jobs.running():
+            raise HTTPException(409, "Hay un mando en ejecución: espera a que termine")
+        host = u.get("host", "")
+        if target == "real":
+            if body.confirm.strip() != "REAL":
+                raise HTTPException(422, "Escribe REAL para confirmar la decisión")
+            p = ctx.probe()
+            if not p.get("ok"):
+                raise HTTPException(503, f"El PLC {ctx.plc['ip']} no responde: {p.get('error', '')}")
+            others = ctx.port_users()
+            if others:
+                raise HTTPException(409, f"Otro programa de este PC está conectado al PLC (PID {', '.join(map(str, others))}): ciérralo antes")
+            ctx.set_plc_mode("real")
+            ctx.supervisor.restart_one("sc")
+            ctx.diary.add(author=u["name"], kind="modo", host=host,
+                          text=f"Modo REAL activado desde {host}: el control escribe en el PLC {ctx.plc['ip']} (estado {p.get('state')}, tapa {p.get('cover')})")
+            log_action(u, "mode:real")
+            return {"ok": True, "mode": "real", "plc": p}
+        exit_state = ctx.config.get("exit_state")
+        ctx.supervisor.stop_one("sc")
+        r = ctx.apply_exit_state(exit_state)
+        ctx.set_plc_mode("shadow")
+        ctx.supervisor.start_one("sc")
+        ctx.diary.add(author=u["name"], kind="modo", host=host,
+                      text=f"Modo SOMBRA activado; PLC dejado en «{EXIT_STATES.get(exit_state, exit_state)}»: "
+                           f"{'estado ' + str(r.get('state_after')) if r.get('ok') else 'ERROR ' + str(r.get('error'))}")
+        log_action(u, "mode:shadow", result="ok" if r.get("ok") else "exit_state_error")
+        return {"ok": bool(r.get("ok")), "mode": "shadow", "exit": r}
+
+    @app.post("/api/command")
+    def post_command(body: CommandRequest, request: Request):
+        u = require_user(request)
+        require_lock(u)
+        if ctx.mode != "real":
+            raise HTTPException(409, "En modo SOMBRA los mandos se ejecutan en seco (/api/dryrun)")
+        if body.command not in dryrun.COMMANDS:
+            raise HTTPException(422, "Mando desconocido")
+        if not body.confirm:
+            raise HTTPException(422, "Confirmación requerida")
+        if not state_io.read_control(ctx.state_dir).get("paused"):
+            raise HTTPException(409, "Pon el control automático en pausa antes de usar los mandos")
+        if ctx.jobs.running():
+            raise HTTPException(409, "Ya hay un mando en ejecución")
+        try:
+            job = ctx.jobs.start(body.command, plc_factory=ctx.plc_factory)
+        except plc_ops.Busy as e:
+            raise HTTPException(409, str(e))
+        ctx.diary.add(author=u["name"], kind="mando", host=u.get("host", ""), text=f"{job.label} (REAL) iniciado en el PLC {ctx.plc['ip']}")
+        log_action(u, f"command:{body.command}")
+        return job.as_dict()
+
+    @app.get("/api/job")
+    def get_job(request: Request):
+        require_user(request)
+        return ctx.jobs.status() or {"status": "none"}
+
+    @app.post("/api/job/abort")
+    def post_job_abort(request: Request):
+        u = require_user(request)
+        require_lock(u)
+        ok = ctx.jobs.abort()
+        log_action(u, "job:abort", result="ok" if ok else "nothing")
+        return {"ok": ok}
+
+    @app.get("/api/plc")
+    def get_plc(request: Request):
+        require_user(request)
+        if ctx.mode != "real" and not ctx.config.get("plc_read_allowed"):
+            raise HTTPException(403, "La lectura del PLC en modo SOMBRA está desactivada (Ajustes)")
+        ctx._probe_cache = (None, None)
+        return ctx.probe_cached(0)
 
     return app

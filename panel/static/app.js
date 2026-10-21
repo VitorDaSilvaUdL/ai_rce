@@ -119,6 +119,10 @@
     el.innerHTML = Object.keys(ACT).map((k) => `<span class="act ${esc(p && p[k] || "")}">${ACT[k]}: ${ACT_ES[p && p[k]] || "?"}</span>`).join("");
   }
   function renderInicio(s) {
+    let plcEl = $(".light[data-k=plc]");
+    if (s.plc && !plcEl) { $("#lights").insertAdjacentHTML("beforeend", '<div class="light" data-k="plc"><div class="dot"></div><div class="lt">PLC</div><div class="ls">—</div></div>'); plcEl = $(".light[data-k=plc]"); }
+    if (!s.plc && plcEl) plcEl.remove();
+    if (s.plc) { plcEl.className = "light " + (s.lights.plc === "alarm" ? "missing" : s.lights.plc); $(".ls", plcEl).textContent = s.plc.ok ? `${s.plc_ip} · ${MODE_ES[s.plc.plc_mode] || s.plc.state || "?"} · ${COVER_ES[s.plc.cover] || s.plc.cover}${s.lights.plc === "alarm" ? " · ALARMA lluvia/viento" : ""}` : "no responde"; }
     for (const k of ["wincc", "api", "sc", "filebeat"]) {
       const el = $(`.light[data-k=${k}]`), v = s.lights[k];
       el.className = "light " + v;
@@ -223,23 +227,47 @@
     const mine = s.lock && s.lock.name === s.me;
     const paused = s.control && s.control.paused;
     $("#chk-pause").checked = !!paused;
-    $("#mandos-mode").textContent = s.mode === "real" ? "REAL" : "SOMBRA: en seco"; $("#mandos-mode").className = "tag " + s.mode;
+    $("#mandos-mode").textContent = s.mode === "real" ? "REAL: escribe en el PLC" : "SOMBRA: en seco"; $("#mandos-mode").className = "tag " + s.mode;
+    const wm = $("#tab-mandos .watermark"); wm.dataset.wm = s.mode === "real" ? "REAL" : "SIMULADO";
+    $("#mandos-help").textContent = s.mode === "real" ? "MODO REAL: cada mando escribe en el PLC. Hace falta tener el mando y el control automático en pausa. La secuencia se muestra paso a paso y se puede abortar." : "En modo SOMBRA los mandos se ejecutan en seco: se muestra la secuencia exacta de escrituras que se harían en el PLC y, si lo marcas, se aplica el resultado al estado virtual del control. No se toca el PLC.";
+    if (s.job && s.job.status === "running" && !jobTimer) renderJob(s.job);
     $("#mandos-check").innerHTML = [
       [mine, mine ? "Tienes el mando" : "Hace falta tomar el mando"],
       [s.supervisor.wanted, s.supervisor.wanted ? "Control en marcha" : "Control parado (los mandos en seco funcionan igual)"],
       [paused || s.mode !== "real", paused ? "Control automático en pausa" : "Control automático activo"],
-      [s.mode !== "real", s.mode === "real" ? "Modo REAL: los mandos escribirían en el PLC" : "Modo SOMBRA: nada toca el PLC"],
+      [s.mode !== "real", s.mode === "real" ? "Modo REAL: los mandos escriben en el PLC" : "Modo SOMBRA: nada toca el PLC"],
+      ...(s.mode === "real" ? [[s.plc && s.plc.ok, s.plc && s.plc.ok ? `PLC ${s.plc_ip} responde` : "El PLC no responde"], [!(s.lights.plc === "alarm"), s.lights.plc === "alarm" ? "Alarma de lluvia o viento: no se puede abrir" : "Sin alarma de lluvia o viento"]] : []),
     ].map(([ok, t]) => `<li class="${ok ? "yes" : "no"}">${ok ? "✔" : "✖"} ${esc(t)}</li>`).join("");
-    $$(".btn.cmd").forEach((b) => { b.disabled = !mine; });
+    $$(".btn.cmd").forEach((b) => { b.disabled = !mine || (s.mode === "real" && (!paused || !(s.plc && s.plc.ok) || (s.job && s.job.status === "running"))); });
     $("#chk-apply").parentElement.style.display = s.mode === "real" ? "none" : "";
   }
   $("#chk-pause").addEventListener("change", async (ev) => {
     try { await post("/api/control/pause", {paused: ev.target.checked}); toast(ev.target.checked ? "Control automático en pausa" : "Control automático activo", "ok"); await loadStatus(); }
     catch (e) { ev.target.checked = !ev.target.checked; }
   });
+  let jobTimer = null;
+  function renderJob(j) {
+    if (!j || j.status === "none") { $("#job-bar").hidden = true; return; }
+    $("#dryrun-result").hidden = false;
+    const st = {running: "EN EJECUCIÓN", done: "terminado", aborted: "ABORTADO", error: "ERROR"}[j.status] || j.status;
+    $("#dr-title").textContent = `${j.label} — REAL · ${st}${j.error ? ": " + j.error : ""}`;
+    const cov = j.cover_timeline.length ? j.cover_timeline.map((c) => `${c[0].slice(11)} ${COVER_ES[c[1]] || c[1]}`).join(" → ") : "—";
+    $("#dr-summary").innerHTML = `<span>Estado: <b>${esc(STATE_ES[j.state_before] || j.state_before || "?")}</b> → <b>${esc(STATE_ES[j.state_after] || j.state_after || "…")}</b></span><span>Tapa: ${esc(cov)}</span><span>${j.elapsed_s} s</span>${j.timings.open_s ? `<span>abrir ${j.timings.open_s} s</span>` : ""}${j.timings.close_s ? `<span>cerrar ${j.timings.close_s} s</span>` : ""}`;
+    $("#dr-steps").innerHTML = j.steps.map((s) => `<li class="${esc(s.kind)}">${esc(s.text)}${s.kind === "write" ? ` <span class="muted">(DB${s.db}.${s.byte}.${s.bit} = ${s.value ? 1 : 0})</span>` : ""}${s.kind === "wait" && s.seconds != null && s.progress != null ? ` <b>${s.progress}/${s.seconds} s</b>` : ""}${s.ok === true ? " ✔" : s.ok === false ? " ✖" : ""}</li>`).join("");
+    $("#job-bar").hidden = j.status !== "running";
+    $("#job-info").textContent = j.status === "running" ? "El mando se está ejecutando en el PLC. Abortar deja los actuadores como estén en ese momento." : "";
+    if (j.status === "running") { clearTimeout(jobTimer); jobTimer = setTimeout(pollJob, 1000); } else { setTimeout(loadStatus, 500); }
+  }
+  async function pollJob() { try { renderJob(await api("/api/job")); } catch (e) {} }
+  $("#btn-job-abort").addEventListener("click", async () => { if (confirm("¿Abortar el mando en curso?")) { try { await post("/api/job/abort"); } catch (e) {} } });
   $$(".btn.cmd").forEach((b) => b.addEventListener("click", async () => {
     const cmd = b.dataset.cmd;
-    if (status && status.mode === "real" && !confirm(`¿Ejecutar «${b.textContent.trim()}» en el PLC?`)) return;
+    if (status && status.mode === "real") {
+      if (!$("#chk-pause").checked) { toast("Pon el control automático en pausa antes de mandar", "bad"); return; }
+      if (!confirm(`MODO REAL: «${b.textContent.trim()}» se ejecutará en el PLC ${status.plc_ip}.\n¿Estás seguro?`)) return;
+      let j; try { j = await post("/api/command", {command: cmd, confirm: true}); } catch (e) { return; }
+      $("#dryrun-result").hidden = false; renderJob(j); return;
+    }
     let r; try { r = await post("/api/dryrun", {command: cmd, apply: $("#chk-apply").checked, alarm: $("#chk-alarm").checked}); } catch (e) { return; }
     $("#dryrun-result").hidden = false;
     $("#dr-title").textContent = `${r.label} — ${r.simulated ? "simulado en seco" : "ejecutado"}${r.aborted ? " · SECUENCIA ABORTADA" : ""}${r.applied ? " · aplicado al estado virtual" : ""}`;
@@ -372,13 +400,34 @@
     let s; try { s = await api("/api/settings"); } catch (e) { return; }
     const badge = $("#set-mode"); badge.textContent = s.mode === "real" ? "REAL" : "SOMBRA"; badge.classList.toggle("real", s.mode === "real");
     $("#set-exit").innerHTML = Object.entries(s.exit_states).map(([k, v]) => `<option value="${k}" ${k === s.exit_state ? "selected" : ""}>${esc(v)}</option>`).join("");
-    $("#set-autostart").checked = !!s.autostart; $("#set-refresh").value = s.refresh_s;
+    $("#set-autostart").checked = !!s.autostart; $("#set-refresh").value = s.refresh_s; $("#set-plcread").checked = !!s.plc_read_allowed;
+    const mine = status && status.lock && status.lock.name === me;
+    $("#btn-mode-real").disabled = !(mine && s.mode === "shadow"); $("#btn-mode-shadow").disabled = !(mine && s.mode === "real");
+    $("#btn-mode-real").title = mine ? "" : "Hace falta tener el mando";
     $("#people").innerHTML = s.people.map((p) => `<li><span>${esc(p)}</span>${p !== me ? `<button class="btn small" data-del="${esc(p)}">Quitar</button>` : "<span class='muted'>tú</span>"}</li>`).join("");
     $$("#people [data-del]").forEach((b) => b.addEventListener("click", async () => { if (confirm(`¿Quitar a ${b.dataset.del}?`)) { try { await api(`/api/people/${encodeURIComponent(b.dataset.del)}`, {method: "DELETE"}); loadSettings(); } catch (e) {} } }));
     $("#info").innerHTML = [["Este PC", s.host], ["Carpeta de WinCC", s.wincc_dir], ["Dirección del panel", `http://${location.host}`], ["API de predicción", s.api_url]].map(([k, v]) => `<b>${esc(k)}</b><span>${esc(v)}</span>`).join("");
   }
   $("#btn-settings-save").addEventListener("click", async () => {
-    try { await post("/api/settings", {exit_state: $("#set-exit").value, autostart: $("#set-autostart").checked, refresh_s: +$("#set-refresh").value}); toast("Ajustes guardados", "ok"); } catch (e) {}
+    try { await post("/api/settings", {exit_state: $("#set-exit").value, autostart: $("#set-autostart").checked, refresh_s: +$("#set-refresh").value, plc_read_allowed: $("#set-plcread").checked}); toast("Ajustes guardados", "ok"); } catch (e) {}
+  });
+  function renderPlcInfo(p) {
+    if (!p) { $("#plc-info").innerHTML = ""; return; }
+    $("#plc-info").innerHTML = (p.ok ? [["PLC", p.ip + " · leído " + fmtTs(p.ts)], ["Estado", (STATE_ES[p.state] || p.state || "desconocido") + " (" + (MODE_ES[p.plc_mode] || p.plc_mode) + ")"], ["Tapa", COVER_ES[p.cover] || p.cover], ["Alarmas", Object.entries(p.alarms || {}).map(([k, v]) => `${k}: ${v ? "ACTIVA" : "no"}`).join(" · ")], ["Horario de hoy (DB80/83)", p.schedule_today ? `calor ${p.schedule_today.heat_start}–${p.schedule_today.heat_end}, parada hasta ${p.schedule_today.parada_end}` : "fin de semana: parada"]] : [["PLC", p.ip], ["Error", p.error || "no responde"]]).map(([k, v]) => `<b>${esc(k)}</b><span>${esc(v)}</span>`).join("");
+  }
+  $("#btn-plc-read").addEventListener("click", async () => { try { renderPlcInfo(await api("/api/plc")); } catch (e) {} });
+  $("#btn-mode-real").addEventListener("click", async () => {
+    let p; try { p = await api("/api/plc"); } catch (e) { toast("Primero permite la lectura del PLC en Ajustes o comprueba la red", "bad"); return; }
+    renderPlcInfo(p);
+    if (!p.ok) { toast("El PLC no responde: no se puede activar REAL", "bad"); return; }
+    if (!confirm(`¿Estás seguro?\n\nA partir de ahora el control escribirá en el PLC ${p.ip}: bombas, válvulas y tapa.\nEstado actual del PLC: ${STATE_ES[p.state] || p.state || "desconocido"}, tapa ${COVER_ES[p.cover] || p.cover}.\nLa siguiente decisión del control se aplicará en el PLC.`)) return;
+    const word = prompt("Confirmar la decisión: escribe REAL en mayúsculas");
+    if (word === null) return;
+    try { const r = await post("/api/mode", {mode: "real", confirm: word.trim()}); toast("Modo REAL activado", "ok"); await loadStatus(); loadSettings(); } catch (e) {}
+  });
+  $("#btn-mode-shadow").addEventListener("click", async () => {
+    if (!confirm(`¿Volver a SOMBRA?\n\nEl control dejará de escribir en el PLC y este quedará en: ${$("#set-exit").selectedOptions[0] ? $("#set-exit").selectedOptions[0].textContent : "estado de salida"}.`)) return;
+    try { const r = await post("/api/mode", {mode: "shadow"}); toast(r.ok ? "Modo SOMBRA activado; PLC en estado de salida" : "SOMBRA activado, pero el estado de salida falló: revisa el PLC", r.ok ? "ok" : "bad"); await loadStatus(); loadSettings(); } catch (e) {}
   });
   $("#people-form").addEventListener("submit", async (ev) => {
     ev.preventDefault();

@@ -147,6 +147,7 @@
     <h2 id="dr-title">Resultado</h2>
     <div id="dr-summary" class="dr-summary"></div>
     <ol id="dr-steps" class="steps"></ol>
+    <div class="row" id="job-bar" hidden><button class="btn danger" id="btn-job-abort">■ Abortar</button><span class="muted" id="job-info"></span></div>
   </div>
 </section>
 
@@ -307,8 +308,14 @@
     <div class="card">
       <h2>Modo de ejecución</h2>
       <div class="row"><span id="set-mode" class="badge mode">—</span></div>
-      <p class="muted">El modo REAL (el control escribe en el PLC) se activa en la fase 3, con autorización del equipo y doble confirmación.</p>
-      <button class="btn" id="btn-mode-real" disabled>Activar REAL (fase 3)</button>
+      <p class="muted">En REAL el control escribe en el PLC (bombas, válvulas y tapa). Activarlo exige tener el mando, que el PLC responda y dos confirmaciones. Volver a SOMBRA deja el PLC en el estado de salida elegido abajo.</p>
+      <div class="row">
+        <button class="btn danger" id="btn-mode-real" disabled>Activar REAL…</button>
+        <button class="btn" id="btn-mode-shadow" disabled>Volver a SOMBRA</button>
+        <button class="btn" id="btn-plc-read">Leer el PLC</button>
+      </div>
+      <div id="plc-info" class="kv"></div>
+      <label class="switch"><input type="checkbox" id="set-plcread"> <span>Permitir leer el PLC en modo SOMBRA (solo lectura)</span></label>
       <h3>Al volver a SOMBRA, dejar el PLC en</h3>
       <select id="set-exit"></select>
       <h3>Otros</h3>

@@ -145,6 +145,22 @@ class Supervisor:
             if self.wanted:
                 proc.start()
 
+    def stop_one(self, name):
+        """Stop one process and keep it stopped until start_one() (the watchdog will not restart it)."""
+        with self._lock:
+            proc = {"api": self.api, "sc": self.sc}[name]
+            proc.stop()
+            self._held = getattr(self, "_held", set()) | {name}
+            self._event(f"{name} detenido por el panel")
+
+    def start_one(self, name):
+        with self._lock:
+            proc = {"api": self.api, "sc": self.sc}[name]
+            self._held = getattr(self, "_held", set()) - {name}
+            if self.wanted and not proc.running:
+                proc.start()
+                self._event(f"{name} arrancado por el panel")
+
     # --- watchdog
     def tick(self, now=None):
         now = now or datetime.now()
@@ -152,7 +168,7 @@ class Supervisor:
             if not self.wanted:
                 return
             for proc, ready in ((self.api, lambda: True), (self.sc, self.api_ready)):
-                if proc.running:
+                if proc.running or proc.name in getattr(self, "_held", set()):
                     self._down_since.pop(proc.name, None)
                     continue
                 if proc.started_at is None:                      # never started yet
