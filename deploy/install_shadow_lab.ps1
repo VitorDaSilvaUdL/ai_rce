@@ -132,7 +132,7 @@ if (-not (Test-Path $VenvPy)) {
 }
 $req = Join-Path $Logs 'requirements-lab.txt'
 [IO.File]::WriteAllText($req, [IO.File]::ReadAllText((Join-Path $Root 'api\requirements.txt')), (New-Object Text.UTF8Encoding $false))
-Add-Content $req "python-snap7==1.4.1`r`ntqdm`r`npytest"
+Add-Content $req "python-snap7==1.4.1`r`ntqdm`r`npytest`r`nhttpx==0.28.1"   # httpx: TestClient of the panel tests
 $pipLog = Join-Path $Logs 'pip_install.log'
 if ((Run-Logged $VenvPy @('-m', 'pip', 'install', '--disable-pip-version-check', '-r', "`"$req`"") $pipLog) -ne 0) {
   Die "pip install ha fallado. Últimas líneas de logs\pip_install.log:`n$((Get-Content $pipLog -Tail 15) -join "`n")"
