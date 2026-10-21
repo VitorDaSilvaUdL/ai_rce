@@ -595,6 +595,9 @@ def create_app(ctx: PanelContext) -> FastAPI:
             raise HTTPException(409, "Hay un mando en ejecución: espera a que termine")
         host = u.get("host", "")
         if target == "real":
+            if not ctx.config.get("real_mode_allowed"):
+                raise HTTPException(403, "El modo REAL está deshabilitado: hace falta la autorización del equipo y poner "
+                                         '"real_mode_allowed": true en state\\panel_config.json del PC del laboratorio')
             if body.confirm.strip() != "REAL":
                 raise HTTPException(422, "Escribe REAL para confirmar la decisión")
             p = ctx.probe()

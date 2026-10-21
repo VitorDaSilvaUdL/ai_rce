@@ -74,6 +74,8 @@ def ctx(tmp_path):
                     "cover": "closed", "alarms": {"lluvia": False, "viento": False}, "schedule_today": None,
                     "pumps": {"b1": "off", "b2": "off", "ev1": "off", "ev2": "on"}}
     exit_calls = []
+    # the file switch is off by default: these tests exercise the REAL mode, so they turn it on
+    (state / "panel_config.json").write_text(json.dumps({"real_mode_allowed": True}), encoding="utf-8")
     c = web.PanelContext(root=tmp_path, state_dir=state, wincc_dir=wincc, dades_path=tmp_path / "dades.csv",
                          sc_config_path=sc_cfg, plc={"ip": "10.0.0.1", "rack": 0, "slot": 1},
                          probe=lambda: dict(probe_result), port_users=lambda: [],
@@ -258,6 +260,22 @@ def test_mode_real_needs_the_lock_the_word_and_a_live_plc(client, ctx):
     assert s["mode"] == "real" and s["plc"]["ok"] and s["lights"]["plc"] == "ok"
     d = client.get("/api/diary").json()
     assert d[-1]["tipo"] == "modo" and "REAL" in d[-1]["texto"]
+
+
+def test_real_mode_is_off_unless_the_config_file_allows_it(client, ctx):
+    login(client)
+    client.post("/api/lock/take")
+    ctx.config.set(real_mode_allowed=False)
+    assert client.get("/api/settings").json()["real_mode_allowed"] is False
+    r = client.post("/api/mode", json={"mode": "real", "confirm": "REAL"})
+    assert r.status_code == 403 and "real_mode_allowed" in r.json()["detail"]
+    assert ctx.mode == "shadow" and ctx.supervisor.calls == []
+    # the switch cannot be flipped from the page: only by editing state/panel_config.json on the lab PC
+    client.post("/api/settings", json={"real_mode_allowed": True, "refresh_s": 20})
+    assert client.get("/api/settings").json()["real_mode_allowed"] is False
+    assert client.post("/api/mode", json={"mode": "real", "confirm": "REAL"}).status_code == 403
+    ctx.config.set(real_mode_allowed=True)
+    assert client.post("/api/mode", json={"mode": "real", "confirm": "REAL"}).status_code == 200
 
 
 def test_mode_back_to_shadow_applies_the_exit_state(client, ctx):

@@ -403,8 +403,10 @@
     $("#set-exit").innerHTML = Object.entries(s.exit_states).map(([k, v]) => `<option value="${k}" ${k === s.exit_state ? "selected" : ""}>${esc(v)}</option>`).join("");
     $("#set-autostart").checked = !!s.autostart; $("#set-refresh").value = s.refresh_s; $("#set-plcread").checked = !!s.plc_read_allowed;
     const mine = status && status.lock && status.lock.name === me;
-    $("#btn-mode-real").disabled = !(mine && s.mode === "shadow"); $("#btn-mode-shadow").disabled = !(mine && s.mode === "real");
-    $("#btn-mode-real").title = mine ? "" : "Hace falta tener el mando";
+    const realAllowed = !!s.real_mode_allowed;
+    $("#btn-mode-real").disabled = !(mine && s.mode === "shadow" && realAllowed); $("#btn-mode-shadow").disabled = !(mine && s.mode === "real");
+    $("#btn-mode-real").title = !realAllowed ? "Deshabilitado en la configuración del panel" : mine ? "" : "Hace falta tener el mando";
+    $("#set-real-note").textContent = realAllowed ? "" : "El modo REAL está deshabilitado en este PC (state\\panel_config.json: real_mode_allowed). Se habilita a mano, con la autorización del equipo; no se puede cambiar desde esta página.";
     $("#people").innerHTML = s.people.map((p) => `<li><span>${esc(p)}</span>${p !== me ? `<button class="btn small" data-del="${esc(p)}">Quitar</button>` : "<span class='muted'>tú</span>"}</li>`).join("");
     $$("#people [data-del]").forEach((b) => b.addEventListener("click", async () => { if (confirm(`¿Quitar a ${b.dataset.del}?`)) { try { await api(`/api/people/${encodeURIComponent(b.dataset.del)}`, {method: "DELETE"}); loadSettings(); } catch (e) {} } }));
     $("#info").innerHTML = [["Este PC", s.host], ["Carpeta de WinCC", s.wincc_dir], ["Dirección del panel", `http://${location.host}`], ["API de predicción", s.api_url]].map(([k, v]) => `<b>${esc(k)}</b><span>${esc(v)}</span>`).join("");
