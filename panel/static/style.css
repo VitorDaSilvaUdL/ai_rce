@@ -155,3 +155,4 @@ a { color: var(--accent); }
 .table tr.hl td { background: var(--ok-bg); }
 .watermark[data-wm='REAL']::after { color: rgba(180, 35, 24, .22); }
 .steps li.error { color: var(--bad); font-weight: 700; }
+[hidden] { display: none !important; }

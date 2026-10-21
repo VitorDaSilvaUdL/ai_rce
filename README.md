@@ -154,6 +154,13 @@ seco (`panel/dryrun.py`: la secuencia exacta de escrituras que haría el PLC, si
 repositorio de trabajo. Instalación en el PC del laboratorio: `deploy/install_shadow_lab.ps1` (ai_rce en sombra) y
 después `deploy/install_panel.ps1` (tarea programada `RCE-Panel`, puerto 8050, acceso directo «Panel RCE»).
 
+Fases 2 y 3 del panel: `sc/decision.py` (la decisión en tiempo real como función pura con motivos, que el panel
+muestra y usa en el simulador), pestaña Control, simulador completo con el modelo y reproducción de un día
+(`panel/simfull.py`), y **modo REAL** desde el panel: activación con doble confirmación (y comprobación de que el PLC
+responde y de que ningún otro programa está conectado), mandos reales como trabajos con progreso y aborto
+(`panel/plc_ops.py`; exigen el mando tomado y el control en pausa) y estado de salida configurable al volver a SOMBRA.
+Probado contra `sc/plc_dummy.py` (PLC Snap7 simulado); en el laboratorio solo con autorización del equipo.
+
 Variables de entorno útiles: `SC_CONFIG` (ruta a un JSON de configuración distinto de `sc/config.<env>.json`),
 `PANEL_WORK_DIR` (carpeta para `state/`, registros y `sc.log` fuera del repositorio, para pruebas),
 `SC_SMTP_PASSWORD` / `GMAIL_APP_PASSWORD` o `sc/secrets.local.json` (contraseñas; `sc/credentials.py`).
