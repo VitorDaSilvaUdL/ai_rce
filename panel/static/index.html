@@ -350,7 +350,7 @@
       <ul id="people" class="people"></ul>
       <form id="people-form" class="form row">
         <input type="text" id="p-name" placeholder="Nombre" required>
-        <input type="password" id="p-pin" placeholder="PIN (cifras)" pattern="[0-9]{4,12}" required>
+        <input type="password" id="p-pin" placeholder="PIN o contraseña (4 a 32)" minlength="4" maxlength="32" autocomplete="new-password" required>
         <button class="btn" type="submit">Añadir o cambiar PIN</button>
       </form>
       <h2>Información</h2>
@@ -366,9 +366,9 @@
   <div class="dialog">
     <h1>Panel RCE</h1>
     <form id="login-form" class="form">
-      <p id="login-msg" class="muted">Entra con tu nombre y tu PIN.</p>
+      <p id="login-msg" class="muted">Entra con tu nombre y tu PIN o contraseña.</p>
       <label>Nombre <input type="text" id="login-name" autocomplete="username" required></label>
-      <label>PIN <input type="password" id="login-pin" inputmode="numeric" autocomplete="current-password" required></label>
+      <label>PIN o contraseña <input type="password" id="login-pin" minlength="4" maxlength="32" autocomplete="current-password" required></label>
       <button class="btn ok huge" type="submit" id="login-btn">Entrar</button>
       <div id="login-error" class="error"></div>
     </form>

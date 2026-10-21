@@ -115,6 +115,17 @@ def test_setup_only_from_localhost_and_only_once(ctx):
     assert client.post("/api/setup", json={"name": "Albert", "pin": "1234"}).status_code == 403
 
 
+def test_pin_accepts_letters_digits_and_symbols(client):
+    assert client.post("/api/setup", json={"name": "Albert", "pin": "Lab2026x"}).status_code == 200
+    assert client.post("/api/login", json={"name": "Albert", "pin": "lab2026x"}).status_code == 401   # case matters
+    assert client.post("/api/login", json={"name": "Albert", "pin": "Lab2026x"}).status_code == 200
+    client.post("/api/lock/take")
+    assert client.post("/api/people", json={"name": "Roger", "pin": "Rv_2026!"}).status_code == 200
+    assert client.post("/api/people", json={"name": "Marc", "pin": "abc"}).status_code == 422          # too short
+    assert client.post("/api/people", json={"name": "Marc", "pin": "    "}).status_code == 422         # only spaces
+    assert client.post("/api/people", json={"name": "Marc", "pin": "x" * 33}).status_code == 422       # too long
+
+
 def test_login_required_for_the_api(client):
     assert client.get("/api/status").status_code == 401
     client.post("/api/setup", json={"name": "Albert", "pin": "1234"})

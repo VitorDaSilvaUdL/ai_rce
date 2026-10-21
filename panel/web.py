@@ -117,7 +117,12 @@ class PanelContext:
 # ----------------------------------------------------------------------------------------------- request models
 class Credentials(BaseModel):
     name: str = Field(min_length=1, max_length=40)
-    pin: str = Field(min_length=4, max_length=12)
+    pin: str = Field(min_length=4, max_length=32)   # PIN or password: letters, digits and symbols
+
+
+def check_pin(pin):
+    if not pin.strip():
+        raise HTTPException(422, "El PIN o contraseña no puede ser solo espacios (4 a 32 caracteres)")
 
 
 class DryRunRequest(BaseModel):
@@ -252,8 +257,7 @@ def create_app(ctx: PanelContext) -> FastAPI:
             raise HTTPException(409, "Ya hay personas dadas de alta: entra con tu PIN")
         if request.client.host not in ctx.local_hosts:
             raise HTTPException(403, "La primera persona solo se crea desde el propio PC del panel")
-        if not body.pin.isdigit():
-            raise HTTPException(422, "El PIN son solo cifras (4 a 12)")
+        check_pin(body.pin)
         ctx.people.add(body.name.strip(), body.pin)
         return {"ok": True, "people": ctx.people.names()}
 
@@ -593,8 +597,7 @@ def create_app(ctx: PanelContext) -> FastAPI:
     def post_people(body: Credentials, request: Request):
         u = require_user(request)
         require_lock(u)
-        if not body.pin.isdigit():
-            raise HTTPException(422, "El PIN son solo cifras (4 a 12)")
+        check_pin(body.pin)
         ctx.people.add(body.name.strip(), body.pin)
         log_action(u, f"people:add:{body.name.strip()}")
         return {"ok": True, "people": ctx.people.names()}
