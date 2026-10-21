@@ -24,8 +24,12 @@ from sc.config import (
 from sc.plc_shadow import make_plc
 from sc import cycle_log
 from sc import state_io
+from sc import decision
 
 last_decision_row = None  # fila de get_decision() del ciclo en curso (DECISION_HEADER)
+last_decision = None      # decision.Decision del ciclo en curso (motivos para el panel)
+action = 0                # 0 = no, 1 = si, 2 = parada (última decisión aplicada)
+mode = "parada"           # modo de la última franja activa o leído del PLC al arrancar
 _last_set_state_seq = 0   # último control.json:set_state_seq aplicado (modo sombra)
 
 # logger.setLevel(logging.DEBUG)
@@ -325,10 +329,11 @@ def plan_mode(
 def get_decision():
     global system_data, last_prediction_update_day, total_predicted_production
     global selected_time_frames, current_dem_target, dem_data, prod_data
-    global action, mode, last_decision_row
+    global action, mode, last_decision_row, last_decision
 
     now = datetime.now().replace(microsecond=0)
     last_decision_row = None
+    last_decision = None
 
     # Valor seguro por defecto (por si algo peta antes de asignar nada)
     safe_response = {"respuesta": "parada"}
@@ -400,123 +405,43 @@ def get_decision():
             f"Demanda objectiu actual: {fmt_joules(current_dem_target)} [Joules]."
         )
 
-        # 5) Lògica d'acció en temps real
-        if total_predicted_production == -1 and current_dem_target > 0:
-            # No hi ha producció suficient per cobrir la demanda actual
-            l.append(0)
-            action = 2
-            logger.warning(f"{now}: Producció insuficient. Bomba OFF.")
-        else:
-            found_active_time_frame = False
-
-            current_time_frame_start = now.replace(
-                minute=now.minute - (now.minute % min_time_step),
-                second=0,
-                microsecond=0,
-            )
-            current_time_frame_end = current_time_frame_start + timedelta(
-                minutes=min_time_step
-            )
-            logger.info(
-                f"{now}: Franja horària actual: "
-                f"{current_time_frame_start.isoformat(timespec='seconds')} "
-                f"a {current_time_frame_end.isoformat(timespec='seconds')}"
-            )
-
-            # Recorrem les franges planificades (temp_mode) per veure si la franja actual és activa
-            for time_frame_dt in temp_mode.keys():
-                frame_end_dt = time_frame_dt + timedelta(minutes=min_time_step)
-                if time_frame_dt <= now < frame_end_dt:
-                    found_active_time_frame = True
-                    logger.info(
-                        f"{now}: Franja horària actual ({now.isoformat(timespec='seconds')}) "
-                        f"activa per a l’operació."
-                    )
-
-                    current_frame_prod_value = 0.0
-                    current_frame_str = time_frame_dt.isoformat(timespec='seconds')
-                    curr_mode = "hot" if temp_mode[time_frame_dt] else "cold"
-
-                    if curr_mode == "hot" and current_frame_str in prod_data['hot']:
-                        current_frame_prod_value = float(prod_data['hot'][current_frame_str])
-                        logger.info(
-                            f"{now}: Producció calor prevista en aquesta franja: "
-                            f"{fmt_joules(current_frame_prod_value)} [Joules]."
-                        )
-                    elif curr_mode == "cold" and current_frame_str in prod_data['cold']:
-                        current_frame_prod_value = float(prod_data['cold'][current_frame_str])
-                        logger.info(
-                            f"{now}: Producció fred prevista en aquesta franja: "
-                            f"{fmt_joules(current_frame_prod_value)} [Joules]."
-                        )
-                    else:
-                        logger.info(
-                            f"{now}: Sense dades de producció per a la franja actual en mode {curr_mode}."
-                        )
-
-                    energy_consumed_pump_wh = P_bomba_watts * time_step_hours
-                    logger.info(
-                        f"{now}: Energia consumida per la bomba en aquesta franja: "
-                        f"{fmt_joules(energy_consumed_pump_wh)} [Wh]."
-                    )
-
-                    COP = 0
-                    if energy_consumed_pump_wh > 0:
-                        COP = current_frame_prod_value / energy_consumed_pump_wh
-                        logger.info(f"{now}: COP calculat: {COP:.2f}.")
-                    else:
-                        COP = 0
-                        logger.info(
-                            f"{now}: Energia consumida per la bomba és zero, COP=0."
-                        )
-
-                    # --- DECISIÓN REAL CON COP ---
-                    logger.info(f"curr_mode: {curr_mode}")
-
-                    if COP >= COP_MIN and current_dem_target > 0:
-                        # Buen rendimiento y aún hay demanda → accion = YES
-                        action = 1   # 'yes'
-                        Ttank = 1
-                        logger.info(
-                            f"{now}: COP >= {COP_MIN} i hi ha demanda. "
-                            f"Bomba ON (action=1). Ttank = {Ttank}."
-                        )
-                    else:
-                        # COP bajo o no hay demanda → accion = NO (pero no Parada dura)
-                        action = 0   # 'no'
-                        logger.info(
-                            f"{now}: COP < {COP_MIN} o no hi ha demanda. "
-                            f"Bomba OFF (action=0)."
-                        )
-
-                    # Actualizamos el mode solo para log (no para decidir YES/NO)
-                    mode = curr_mode
-                    break
-
-            l.append(found_active_time_frame)
-
-            if not found_active_time_frame:
-                action = 2
+        # 5) Lògica d'acció en temps real (sc/decision.py: la misma lógica, con motivos para el panel)
+        d = decision.decide(now, temp_mode, prod_data, current_dem_target, total_predicted_production,
+                            action_prev=action, mode_prev=mode, p_bomba_watts=P_bomba_watts,
+                            time_step_hours=time_step_hours, min_time_step=min_time_step, cop_min=COP_MIN)
+        last_decision = d
+        for code in d.codes:                       # las mismas líneas de log que antes, para quien las lea
+            if code == "insufficient_production":
+                logger.warning(f"{now}: Producció insuficient. Bomba OFF.")
+            elif code.startswith("in_frame:"):
+                logger.info(f"{now}: Franja horària actual ({now.isoformat(timespec='seconds')}) activa per a l'operació.")
+            elif code == "frame_prod":
+                logger.info(f"{now}: Producció {'calor' if d.frame_mode == 'hot' else 'fred'} prevista en aquesta franja: "
+                            f"{fmt_joules(d.frame_prod_j)} [Joules].")
+            elif code == "frame_prod_missing":
+                logger.info(f"{now}: Sense dades de producció per a la franja actual en mode {d.frame_mode}.")
+            elif code.startswith("cop:"):
+                logger.info(f"{now}: COP calculat: {d.cop:.2f}.")
+            elif code == "cop_ok":
+                logger.info(f"{now}: COP >= {COP_MIN} i hi ha demanda. Bomba ON (action=1). Ttank = 1.")
+            elif code in ("cop_low", "no_demand_in_frame"):
+                logger.info(f"{now}: COP < {COP_MIN} o no hi ha demanda. Bomba OFF (action=0).")
+            elif code == "out_of_frames":
                 logger.info(f"{now}: Hora actual fora de franges seleccionades. Bomba OFF.")
-
-            if current_dem_target > 0:
-                old_dem_target = current_dem_target
-                current_dem_target = verify_and_adjust_demand(current_dem_target)
-                logger.info(
-                    f"{now}: Demanda restant ajustada de {fmt_joules(old_dem_target)} [Joules] "
-                    f"a {fmt_joules(current_dem_target)} [Joules]."
-                )
-                if current_dem_target <= 0:
-                    selected_time_frames = []
-                    total_predicted_production = 0.0
-                    current_dem_target = 0.0
-                    action = 0
-                    logger.info(
-                        f"{now}: Demanda coberta/esgotada. Reiniciant pla i bomba OFF."
-                    )
-            else:
-                action = 0
+            elif code == "demand_adjusted":
+                logger.info(f"{now}: Demanda restant ajustada de {fmt_joules(d.demand_before)} [Joules] "
+                            f"a {fmt_joules(d.demand_after)} [Joules].")
+            elif code == "plan_done":
+                logger.info(f"{now}: Demanda coberta/esgotada. Reiniciant pla i bomba OFF.")
+            elif code == "no_pending_demand":
                 logger.info(f"{now}: No hi ha demanda objectiu pendent. Bomba OFF.")
+        action = d.action
+        mode = d.mode
+        current_dem_target = d.demand_after
+        if d.plan_reset:
+            selected_time_frames = []
+            total_predicted_production = 0.0
+        l.append(d.in_time_frame)
 
         # 6) Guardar en CSV
         l.append(current_dem_target)
