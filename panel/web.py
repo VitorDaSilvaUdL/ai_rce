@@ -3,6 +3,7 @@ against temporary folders and a fake supervisor. All /api routes except setup, l
 commands and settings need the command lock («Tomar el mando»)."""
 import socket
 import subprocess
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
@@ -24,6 +25,7 @@ from sc.plc_shadow import DEFAULT_SCHEDULE
 STATIC = Path(__file__).resolve().parent / "static"
 COOKIE = "panel_session"
 LOCAL_HOSTS = {"127.0.0.1", "::1", "localhost"}
+REAL_MAX_FAILURES, REAL_LOCK_S = 5, 600     # wrong REAL passwords tolerated in the lock window, and that window
 
 
 class PanelContext:
@@ -41,6 +43,7 @@ class PanelContext:
         self.supervisor = supervisor
         self.mode = mode
         self.local_hosts = set(local_hosts) if local_hosts is not None else set(LOCAL_HOSTS)
+        self.real_failures = []     # monotonic times of the wrong REAL passwords (lockout)
         self.service_state = service_state
         self.api_health = api_health
         self.hostname = hostname or socket.gethostname()
@@ -164,6 +167,12 @@ class Settings(BaseModel):
 class ModeRequest(BaseModel):
     mode: str
     confirm: str = ""
+    password: str = ""
+
+
+class RealPasswordRequest(BaseModel):
+    password: str
+    current: str = ""
 
 
 class CommandRequest(BaseModel):
@@ -549,6 +558,7 @@ def create_app(ctx: PanelContext) -> FastAPI:
     def get_settings(request: Request):
         require_user(request)
         return {**ctx.config.all(), "people": ctx.people.names(), "mode": ctx.mode, "wincc_dir": str(ctx.wincc_dir),
+                "real_password_set": ctx.config.real_password_set(),
                 "exit_states": EXIT_STATES, "diary_kinds": DIARY_KINDS, "operations": OPERATIONS, "host": ctx.hostname}
 
     @app.post("/api/settings")
@@ -561,6 +571,23 @@ def create_app(ctx: PanelContext) -> FastAPI:
         ctx.config.set(**fields)
         log_action(u, "settings:" + ",".join(f"{k}={v}" for k, v in fields.items()))
         return {"ok": True, **ctx.config.all()}
+
+    @app.post("/api/real-password")
+    def post_real_password(body: RealPasswordRequest, request: Request):
+        u = require_user(request)
+        require_lock(u)
+        if request.client.host not in ctx.local_hosts:
+            raise HTTPException(403, "La contraseña del modo REAL solo se define desde el propio PC del laboratorio")
+        if len(body.password) < 8:
+            raise HTTPException(422, "La contraseña del modo REAL tiene al menos 8 caracteres")
+        if ctx.config.real_password_set() and not ctx.config.verify_real_password(body.current):
+            raise HTTPException(403, "La contraseña actual no es correcta")
+        changed = ctx.config.real_password_set()
+        ctx.config.set_real_password(body.password)
+        ctx.diary.add(author=u["name"], kind="modo", host=u.get("host", ""),
+                      text="Contraseña del modo REAL " + ("cambiada" if changed else "definida") + " desde el PC del laboratorio")
+        log_action(u, "real-password:" + ("change" if changed else "set"))
+        return {"ok": True, "real_password_set": True}
 
     @app.post("/api/people")
     def post_people(body: Credentials, request: Request):
@@ -595,11 +622,18 @@ def create_app(ctx: PanelContext) -> FastAPI:
             raise HTTPException(409, "Hay un mando en ejecución: espera a que termine")
         host = u.get("host", "")
         if target == "real":
-            if not ctx.config.get("real_mode_allowed"):
-                raise HTTPException(403, "El modo REAL está deshabilitado: hace falta la autorización del equipo y poner "
-                                         '"real_mode_allowed": true en state\\panel_config.json del PC del laboratorio')
             if body.confirm.strip() != "REAL":
                 raise HTTPException(422, "Escribe REAL para confirmar la decisión")
+            if not ctx.config.real_password_set():
+                raise HTTPException(403, "No hay contraseña del modo REAL: se define en Ajustes desde el propio PC del laboratorio")
+            now_m = time.monotonic()
+            ctx.real_failures[:] = [t for t in ctx.real_failures if now_m - t < REAL_LOCK_S]
+            if len(ctx.real_failures) >= REAL_MAX_FAILURES:
+                raise HTTPException(429, f"Demasiados intentos fallidos: el modo REAL queda bloqueado {REAL_LOCK_S // 60} min")
+            if not ctx.config.verify_real_password(body.password):
+                ctx.real_failures.append(now_m)
+                log_action(u, "mode:real:contraseña-incorrecta", "error")
+                raise HTTPException(403, "Contraseña del modo REAL incorrecta")
             p = ctx.probe()
             if not p.get("ok"):
                 raise HTTPException(503, f"El PLC {ctx.plc['ip']} no responde: {p.get('error', '')}")

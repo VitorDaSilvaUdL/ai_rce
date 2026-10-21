@@ -121,6 +121,6 @@ Write-Host 'LISTO. Panel RCE instalado.' -ForegroundColor Green
 Write-Host "  En este PC:          http://localhost:$Port  (acceso directo «Panel RCE» en el escritorio)"
 Write-Host "  Desde otros PC:      http://<IP de este PC>:$Port   ($ips)"
 Write-Host '  Primer paso:         abrir el panel en este PC y crear la primera persona (nombre y PIN)'
-Write-Host '  Modo REAL:           deshabilitado (state\panel_config.json: "real_mode_allowed": true para permitirlo, solo con el OK del equipo)'
+Write-Host '  Modo REAL:           sin contraseña aún (no se puede activar). Se define en Ajustes desde este PC, con el mando.'
 Write-Host "  Registros:           $Logs\panel_task.log, api.log, sc_process.log"
 Write-Host '  Desinstalar:         powershell -ExecutionPolicy Bypass -File deploy\uninstall_panel.ps1'

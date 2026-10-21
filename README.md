@@ -161,11 +161,13 @@ responde y de que ningún otro programa está conectado), mandos reales como tra
 (`panel/plc_ops.py`; exigen el mando tomado y el control en pausa) y estado de salida configurable al volver a SOMBRA.
 Probado contra `sc/plc_dummy.py` (PLC Snap7 simulado); en el laboratorio solo con autorización del equipo.
 
-**Interruptor del modo REAL.** Recién instalado, el panel no puede activar el modo REAL: `real_mode_allowed` vale
-`false` y la petición se rechaza (403) aunque se tenga el mando y se escriba «REAL». El interruptor no se puede
-cambiar desde la página: solo editando `state\panel_config.json` en el PC del laboratorio
-(`{"real_mode_allowed": true}`), una vez que el equipo lo autorice. Así el panel se puede instalar y usar desde la red
-(ver, diario, ensayos, mandos en seco, simuladores) sin que nadie pueda tocar el PLC.
+**Contraseña del modo REAL.** Activar REAL exige, además del mando y de las dos confirmaciones («¿Estás seguro?» y
+escribir `REAL`), la contraseña del modo REAL. Recién instalado el panel no hay contraseña y la activación se rechaza
+(403). La contraseña se define o cambia en Ajustes **solo desde el propio PC del laboratorio** (localhost), con el mando
+y, si ya existía, con la actual; mínimo 8 caracteres; se guarda como hash PBKDF2 con sal en `state\panel_config.json`
+(no versionado) y nunca se devuelve por la API. Cinco contraseñas incorrectas bloquean la activación 10 minutos y quedan
+en el registro de acciones. Así el panel se usa desde la red (ver, diario, ensayos, mandos en seco, simuladores) y el
+PLC solo lo toca quien conoce la contraseña.
 
 ### Cambios respecto al control original (campaña 2025)
 

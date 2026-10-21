@@ -51,6 +51,8 @@ def fake_predict(samples):
                      "rain-prediction": {}}}
 
 
+KEY, KEY1, KEY2 = "clave-de-prueba", "clave-nueva-1", "clave-nueva-2"   # REAL mode passwords of the tests
+
 @pytest.fixture
 def ctx(tmp_path):
     now = datetime.now().replace(second=0, microsecond=0)
@@ -74,8 +76,8 @@ def ctx(tmp_path):
                     "cover": "closed", "alarms": {"lluvia": False, "viento": False}, "schedule_today": None,
                     "pumps": {"b1": "off", "b2": "off", "ev1": "off", "ev2": "on"}}
     exit_calls = []
-    # the file switch is off by default: these tests exercise the REAL mode, so they turn it on
-    (state / "panel_config.json").write_text(json.dumps({"real_mode_allowed": True}), encoding="utf-8")
+    # no REAL password after the installation: these tests exercise the REAL mode, so they define one
+    Config(state / "panel_config.json").set_real_password(KEY)
     c = web.PanelContext(root=tmp_path, state_dir=state, wincc_dir=wincc, dades_path=tmp_path / "dades.csv",
                          sc_config_path=sc_cfg, plc={"ip": "10.0.0.1", "rack": 0, "slot": 1},
                          probe=lambda: dict(probe_result), port_users=lambda: [],
@@ -241,17 +243,17 @@ def test_settings_and_people(client, ctx):
 
 def test_mode_real_needs_the_lock_the_word_and_a_live_plc(client, ctx):
     login(client)
-    assert client.post("/api/mode", json={"mode": "real", "confirm": "REAL"}).status_code == 423
+    assert client.post("/api/mode", json={"mode": "real", "confirm": "REAL", "password": KEY}).status_code == 423
     client.post("/api/lock/take")
     assert client.post("/api/mode", json={"mode": "real", "confirm": "si"}).status_code == 422
     assert client.post("/api/mode", json={"mode": "shadow"}).status_code == 409          # already shadow
     ctx.probe_result["ok"] = False; ctx.probe_result["error"] = "timeout"
-    assert client.post("/api/mode", json={"mode": "real", "confirm": "REAL"}).status_code == 503
+    assert client.post("/api/mode", json={"mode": "real", "confirm": "REAL", "password": KEY}).status_code == 503
     ctx.probe_result["ok"] = True
     ctx.port_users = lambda: [4321]
-    assert client.post("/api/mode", json={"mode": "real", "confirm": "REAL"}).status_code == 409
+    assert client.post("/api/mode", json={"mode": "real", "confirm": "REAL", "password": KEY}).status_code == 409
     ctx.port_users = lambda: []
-    r = client.post("/api/mode", json={"mode": "real", "confirm": "REAL"})
+    r = client.post("/api/mode", json={"mode": "real", "confirm": "REAL", "password": KEY})
     assert r.status_code == 200 and r.json()["mode"] == "real" and r.json()["plc"]["state"] == "Parada"
     assert json.loads(ctx.sc_config_path.read_text(encoding="utf-8"))["plc"]["mode"] == "real"
     assert ctx.supervisor.calls[-1] == "restart:sc" and ctx.mode == "real"
@@ -262,27 +264,46 @@ def test_mode_real_needs_the_lock_the_word_and_a_live_plc(client, ctx):
     assert d[-1]["tipo"] == "modo" and "REAL" in d[-1]["texto"]
 
 
-def test_real_mode_is_off_unless_the_config_file_allows_it(client, ctx):
+def test_real_mode_needs_the_password_defined_on_the_lab_pc(client, ctx):
     login(client)
     client.post("/api/lock/take")
-    ctx.config.set(real_mode_allowed=False)
-    assert client.get("/api/settings").json()["real_mode_allowed"] is False
-    r = client.post("/api/mode", json={"mode": "real", "confirm": "REAL"})
-    assert r.status_code == 403 and "real_mode_allowed" in r.json()["detail"]
+    ctx.config.set(real_password=None)
+    s = client.get("/api/settings").json()
+    assert s["real_password_set"] is False and "real_password" not in s
+    r = client.post("/api/mode", json={"mode": "real", "confirm": "REAL", "password": "mal"})
+    assert r.status_code == 403 and "contraseña" in r.json()["detail"]
     assert ctx.mode == "shadow" and ctx.supervisor.calls == []
-    # the switch cannot be flipped from the page: only by editing state/panel_config.json on the lab PC
-    client.post("/api/settings", json={"real_mode_allowed": True, "refresh_s": 20})
-    assert client.get("/api/settings").json()["real_mode_allowed"] is False
-    assert client.post("/api/mode", json={"mode": "real", "confirm": "REAL"}).status_code == 403
-    ctx.config.set(real_mode_allowed=True)
-    assert client.post("/api/mode", json={"mode": "real", "confirm": "REAL"}).status_code == 200
+    # defined only from the lab PC itself, with the lock, at least 8 characters
+    assert client.post("/api/real-password", json={"password": "corta"}).status_code == 422
+    ctx.local_hosts = set()
+    assert client.post("/api/real-password", json={"password": KEY1}).status_code == 403
+    ctx.local_hosts = {"testclient"}
+    assert client.post("/api/real-password", json={"password": KEY1}).status_code == 200
+    s = client.get("/api/settings").json()
+    assert s["real_password_set"] is True and "salt" not in json.dumps(s)
+    assert "real_password" not in json.dumps(client.get("/api/status").json())
+    # changing it needs the current one
+    assert client.post("/api/real-password", json={"password": KEY2, "current": "mal"}).status_code == 403
+    assert client.post("/api/real-password", json={"password": KEY2, "current": KEY1}).status_code == 200
+    assert client.post("/api/settings", json={"real_password": "x", "refresh_s": 20}).status_code == 200   # ignored
+    assert ctx.config.verify_real_password("clave-nueva-2") and not ctx.config.verify_real_password("x")
+    # the word REAL is still required, and a wrong password is refused; five failures block the mode for a while
+    assert client.post("/api/mode", json={"mode": "real", "confirm": "si", "password": KEY2}).status_code == 422
+    for _ in range(5):
+        assert client.post("/api/mode", json={"mode": "real", "confirm": "REAL", "password": "mal"}).status_code == 403
+    assert client.post("/api/mode", json={"mode": "real", "confirm": "REAL", "password": KEY2}).status_code == 429
+    ctx.real_failures.clear()
+    assert client.post("/api/mode", json={"mode": "real", "confirm": "REAL", "password": KEY2}).status_code == 200
+    assert ctx.mode == "real"
+    d = client.get("/api/diary").json()
+    assert any(e["tipo"] == "modo" and "contraseña del modo real" in e["texto"].lower() for e in d)
 
 
 def test_mode_back_to_shadow_applies_the_exit_state(client, ctx):
     login(client)
     client.post("/api/lock/take")
     client.post("/api/settings", json={"exit_state": "parada"})
-    client.post("/api/mode", json={"mode": "real", "confirm": "REAL"})
+    client.post("/api/mode", json={"mode": "real", "confirm": "REAL", "password": KEY})
     r = client.post("/api/mode", json={"mode": "shadow"})
     assert r.status_code == 200 and r.json()["mode"] == "shadow" and r.json()["exit"]["state_after"] == "AutomaticMode"
     assert ctx.exit_calls == ["parada"]
@@ -299,7 +320,7 @@ def test_real_commands_need_real_mode_pause_lock_and_confirmation(client, ctx, m
     login(client)
     client.post("/api/lock/take")
     assert client.post("/api/command", json={"command": "open_cover", "confirm": True}).status_code == 409   # shadow
-    client.post("/api/mode", json={"mode": "real", "confirm": "REAL"})
+    client.post("/api/mode", json={"mode": "real", "confirm": "REAL", "password": KEY})
     assert client.post("/api/command", json={"command": "open_cover", "confirm": True}).status_code == 409   # not paused
     client.post("/api/control/pause", json={"paused": True})
     assert client.post("/api/command", json={"command": "open_cover", "confirm": False}).status_code == 422

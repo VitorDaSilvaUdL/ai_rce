@@ -403,10 +403,11 @@
     $("#set-exit").innerHTML = Object.entries(s.exit_states).map(([k, v]) => `<option value="${k}" ${k === s.exit_state ? "selected" : ""}>${esc(v)}</option>`).join("");
     $("#set-autostart").checked = !!s.autostart; $("#set-refresh").value = s.refresh_s; $("#set-plcread").checked = !!s.plc_read_allowed;
     const mine = status && status.lock && status.lock.name === me;
-    const realAllowed = !!s.real_mode_allowed;
-    $("#btn-mode-real").disabled = !(mine && s.mode === "shadow" && realAllowed); $("#btn-mode-shadow").disabled = !(mine && s.mode === "real");
-    $("#btn-mode-real").title = !realAllowed ? "Deshabilitado en la configuración del panel" : mine ? "" : "Hace falta tener el mando";
-    $("#set-real-note").textContent = realAllowed ? "" : "El modo REAL está deshabilitado en este PC (state\\panel_config.json: real_mode_allowed). Se habilita a mano, con la autorización del equipo; no se puede cambiar desde esta página.";
+    const pwSet = !!s.real_password_set;
+    $("#btn-mode-real").disabled = !(mine && s.mode === "shadow" && pwSet); $("#btn-mode-shadow").disabled = !(mine && s.mode === "real");
+    $("#btn-mode-real").title = !pwSet ? "No hay contraseña del modo REAL" : mine ? "" : "Hace falta tener el mando";
+    $("#set-real-note").textContent = pwSet ? "Activar REAL pide la contraseña del modo REAL además de las dos confirmaciones." : "No hay contraseña del modo REAL: hasta que se defina (abajo, desde el propio PC del laboratorio) el modo REAL no se puede activar.";
+    $("#pw-current-row").style.display = pwSet ? "" : "none";
     $("#people").innerHTML = s.people.map((p) => `<li><span>${esc(p)}</span>${p !== me ? `<button class="btn small" data-del="${esc(p)}">Quitar</button>` : "<span class='muted'>tú</span>"}</li>`).join("");
     $$("#people [data-del]").forEach((b) => b.addEventListener("click", async () => { if (confirm(`¿Quitar a ${b.dataset.del}?`)) { try { await api(`/api/people/${encodeURIComponent(b.dataset.del)}`, {method: "DELETE"}); loadSettings(); } catch (e) {} } }));
     $("#info").innerHTML = [["Este PC", s.host], ["Carpeta de WinCC", s.wincc_dir], ["Dirección del panel", `http://${location.host}`], ["API de predicción", s.api_url]].map(([k, v]) => `<b>${esc(k)}</b><span>${esc(v)}</span>`).join("");
@@ -426,7 +427,22 @@
     if (!confirm(`¿Estás seguro?\n\nA partir de ahora el control escribirá en el PLC ${p.ip}: bombas, válvulas y tapa.\nEstado actual del PLC: ${STATE_ES[p.state] || p.state || "desconocido"}, tapa ${COVER_ES[p.cover] || p.cover}.\nLa siguiente decisión del control se aplicará en el PLC.`)) return;
     const word = prompt("Confirmar la decisión: escribe REAL en mayúsculas");
     if (word === null) return;
-    try { const r = await post("/api/mode", {mode: "real", confirm: word.trim()}); toast("Modo REAL activado", "ok"); await loadStatus(); loadSettings(); } catch (e) {}
+    const pw = await askPassword();
+    if (pw === null) return;
+    try { const r = await post("/api/mode", {mode: "real", confirm: word.trim(), password: pw}); toast("Modo REAL activado", "ok"); await loadStatus(); loadSettings(); } catch (e) {}
+  });
+  function askPassword() {
+    return new Promise((resolve) => {
+      const dlg = $("#pw-dialog"), input = $("#pw-input");
+      input.value = "";
+      dlg.onclose = () => resolve(dlg.returnValue === "ok" ? input.value : null);
+      dlg.showModal(); input.focus();
+    });
+  }
+  $("#btn-real-password").addEventListener("click", async () => {
+    const pw = $("#pw-new").value, pw2 = $("#pw-new2").value;
+    if (pw !== pw2) { toast("Las dos contraseñas no coinciden", "bad"); return; }
+    try { await post("/api/real-password", {password: pw, current: $("#pw-current").value}); toast("Contraseña del modo REAL guardada", "ok"); $("#pw-new").value = $("#pw-new2").value = $("#pw-current").value = ""; loadSettings(); } catch (e) {}
   });
   $("#btn-mode-shadow").addEventListener("click", async () => {
     if (!confirm(`¿Volver a SOMBRA?\n\nEl control dejará de escribir en el PLC y este quedará en: ${$("#set-exit").selectedOptions[0] ? $("#set-exit").selectedOptions[0].textContent : "estado de salida"}.`)) return;
