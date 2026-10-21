@@ -792,13 +792,14 @@ class PLCController:
 
     # ------------------- lógica de decisión (YES / NO / PARADA / lluvia-viento) -------------------
 
-    def decision_none_or_parada(self) -> str:
+    def decision_none_or_parada(self, now=None) -> str:
         """
         Replica DecisionNoneorParada: decide nuevo estado si está en None o Parada
         según el día de la semana y horarios configurados en DB80/83.
         """
-        Dia = datetime.datetime.now().strftime('%A')
-        HoraMinSecActual = datetime.datetime.now().strftime("%H:%M:%S")
+        now = now or datetime.datetime.now()
+        Dia = now.strftime('%A')
+        HoraMinSecActual = now.strftime("%H:%M:%S")
 
         # Por claridad: mantengo la misma estructura que en RadInterface.
         if Dia == 'Monday':
@@ -846,7 +847,7 @@ class PLCController:
 
         return 'Parada'
 
-    def state_decision_yes(self, estado_actual: str) -> str:
+    def state_decision_yes(self, estado_actual: str, now=None) -> str:
         """
         Equivalente a StateDecisionChangerYES.
         """
@@ -857,7 +858,7 @@ class PLCController:
         elif estado_actual == 'AutomaticMode':
             return 'AutomaticMode'
         elif estado_actual is None or estado_actual == 'Parada':
-            return self.decision_none_or_parada()
+            return self.decision_none_or_parada(now)
         else:
             return estado_actual
 
@@ -869,7 +870,7 @@ class PLCController:
         """Equivalente a StateDecisionChangerRAINWIND."""
         return 'Parada'
 
-    def decide_next_state_from_nn(self, respuesta_nn: str, estado_actual: str) -> str:
+    def decide_next_state_from_nn(self, respuesta_nn: str, estado_actual: str, now=None) -> str:
         """
         Decide el siguiente estado en función de la respuesta de la red neuronal
         ('si', 'no', 'Parada' o cualquier otro valor).
@@ -877,7 +878,7 @@ class PLCController:
         r = (respuesta_nn or "").strip().lower()
 
         if r in ('si', 'yes'):
-            return self.state_decision_yes(estado_actual)
+            return self.state_decision_yes(estado_actual, now)
         elif r == 'no':
             return self.state_decision_no(estado_actual)
         elif r == 'parada':
