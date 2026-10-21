@@ -4,7 +4,9 @@ import csv
 from datetime import datetime
 from pathlib import Path
 
-DIARY_HEADER = ["timestamp", "autor", "tipo", "texto", "ensayo_id", "host"]
+DIARY_HEADER = ["timestamp", "autor", "tipo", "texto", "ensayo_id", "host", "operacion"]
+OPERATIONS = {"manual": "Manual (el equipo opera el RCE)", "automatico_plc": "Automático del PLC (programa original)",
+              "control_ia": "Control con IA (ai_rce)"}
 ACTIONS_HEADER = ["timestamp", "autor", "accion", "modo", "resultado", "duracion_s", "host"]
 DIARY_KINDS = {"ensayo_inicio": "Inicio de ensayo", "ensayo_fin": "Fin de ensayo", "incidencia": "Incidencia",
                "nota": "Nota", "mando": "Mando manual", "modo": "Cambio de modo", "sistema": "Sistema"}
@@ -43,24 +45,44 @@ class Diary(CsvLog):
     def __init__(self, path):
         super().__init__(path, DIARY_HEADER)
 
-    def open_trial(self):
-        """Id of the trial started and not yet finished, or None."""
+    def open_trial_info(self):
+        """{ensayo_id, operacion, inicio, texto} of the trial started and not yet finished, or None."""
         current = None
         for r in self.rows():
             if r["tipo"] == "ensayo_inicio":
-                current = r["ensayo_id"]
+                current = {"ensayo_id": r["ensayo_id"], "operacion": r.get("operacion", ""), "inicio": r["timestamp"],
+                           "texto": r["texto"]}
             elif r["tipo"] == "ensayo_fin":
                 current = None
         return current
 
-    def add(self, author, kind, text, now=None, host=""):
+    def open_trial(self):
+        """Id of the trial started and not yet finished, or None."""
+        info = self.open_trial_info()
+        return info["ensayo_id"] if info else None
+
+    def last_closed_trial_info(self):
+        """The last finished trial: {ensayo_id, operacion, inicio, fin, texto}, or None."""
+        current, closed = None, None
+        for r in self.rows():
+            if r["tipo"] == "ensayo_inicio":
+                current = {"ensayo_id": r["ensayo_id"], "operacion": r.get("operacion", ""), "inicio": r["timestamp"],
+                           "texto": r["texto"]}
+            elif r["tipo"] == "ensayo_fin" and current:
+                closed = {**current, "fin": r["timestamp"]}
+                current = None
+        return closed
+
+    def add(self, author, kind, text, now=None, host="", operation=""):
         now = now or datetime.now()
         if kind == "ensayo_inicio":
             trial = f"E{now:%Y%m%d-%H%M}"
         else:
-            trial = self.open_trial() or ""
+            info = self.open_trial_info()
+            trial = info["ensayo_id"] if info else ""
+            operation = operation or (info["operacion"] if info else "")
         return self._append({"timestamp": _stamp(now), "autor": author, "tipo": kind, "texto": text,
-                             "ensayo_id": trial, "host": host})
+                             "ensayo_id": trial, "host": host, "operacion": operation})
 
 
 class Actions(CsvLog):
