@@ -110,3 +110,15 @@ def test_replay_day_runs_96_cycles_with_three_forecasts():
 def test_replay_day_without_data_is_refused():
     with pytest.raises(ValueError):
         simfull.replay_day(DAY.date(), readings=[], state0="Parada", predict=fake_predict, schedule=SCHEDULE)
+
+
+def test_replay_with_the_corrected_control_turns_the_pump_on_in_planned_frames():
+    rs = readings_for(DAY - timedelta(hours=6), 30)
+    r = simfull.replay_day(DAY.date(), readings=rs, state0="Parada", predict=fake_predict, schedule=SCHEDULE)
+    assert r["summary"]["si"] > 0
+    si_steps = [s for s in r["steps"] if s["action"] == "si"]
+    assert all(s["in_frame"] and s["cop"] >= 1 for s in si_steps)
+    assert all(s["next_state"] in ("HeatMode1", "ColdMode1") for s in si_steps)
+    # no toggling: two consecutive 'si' in the same plan keep the same state
+    pairs = [(a, b) for a, b in zip(r["steps"], r["steps"][1:]) if a["action"] == "si" and b["action"] == "si" and a["plan"] == b["plan"]]
+    assert pairs and all(a["next_state"] == b["next_state"] for a, b in pairs)

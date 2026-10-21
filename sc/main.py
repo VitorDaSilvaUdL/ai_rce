@@ -19,7 +19,7 @@ from .plc_controller import PLCController
 from sc.config import (
     PREDICT_URL, P_BOMBA_WATTS, MIN_TIME_STEP,
     PLC_IP, PLC_RACK, PLC_SLOT, OUTPUT_CSV, ITER_TIME_SEC,
-    PLC_CONFIG, OUTPUT_CSV_PATH, COP_PUMP_ENERGY_UNITS
+    PLC_CONFIG, OUTPUT_CSV_PATH, COP_PUMP_ENERGY_UNITS, FRAME_KEY_FORMAT, DEMAND_ADJUST, NEXT_STATE_POLICY
 )
 from sc.plc_shadow import make_plc
 from sc import cycle_log
@@ -409,7 +409,8 @@ def get_decision():
         d = decision.decide(now, temp_mode, prod_data, current_dem_target, total_predicted_production,
                             action_prev=action, mode_prev=mode, p_bomba_watts=P_bomba_watts,
                             time_step_hours=time_step_hours, min_time_step=min_time_step, cop_min=COP_MIN,
-                            rng=random.uniform, pump_energy_units=COP_PUMP_ENERGY_UNITS)
+                            rng=random.uniform, pump_energy_units=COP_PUMP_ENERGY_UNITS,
+                            frame_key_format=FRAME_KEY_FORMAT, demand_adjust=DEMAND_ADJUST)
         last_decision = d
         for code in d.codes:                       # las mismas líneas de log que antes, para quien las lea
             if code == "insufficient_production":
@@ -553,8 +554,12 @@ def run_cycle(plc, out_path=OUTPUT_CSV_PATH, state_dir=state_io.STATE_DIR):
     # 2) Leer estado actual del PLC (virtual en modo sombra)
     estado_actual, combinaciones = plc.get_system_state()
 
-    # 3) Calcular nuevo estado a partir de la respuesta de la IA
-    nuevo_estado = plc.decide_next_state_from_nn(respuesta_nn, estado_actual)
+    # 3) Calcular nuevo estado a partir de la respuesta de la IA. Política "frame_mode" (por defecto): «sí» fija el
+    #    modo de la franja activa (frío/calor) en vez de alternar; "toggle": máquina de estados original.
+    if last_decision is not None:
+        nuevo_estado = decision.next_state(last_decision, estado_actual, plc, policy=NEXT_STATE_POLICY)
+    else:
+        nuevo_estado = plc.decide_next_state_from_nn(respuesta_nn, estado_actual)
 
     # AVISO: solo si la IA dice "si" y el estado realmente cambia
     if respuesta_nn == "si" and nuevo_estado != estado_actual:

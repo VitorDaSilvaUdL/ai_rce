@@ -50,6 +50,7 @@ def main_in_shadow(monkeypatch, tmp_path):
     monkeypatch.setattr(main, "current_dem_target", 6.1e6)
     monkeypatch.setattr(main, "total_predicted_production", 4.2e6)
     monkeypatch.setattr(main, "_last_set_state_seq", 0)
+    monkeypatch.setattr(main, "last_decision", None)
     return main
 
 
@@ -105,16 +106,33 @@ def test_run_cycle_without_decision_still_writes_status(main_in_shadow, tmp_path
     assert st["decision"]["action"] == "" and st["plc_state"] == "Parada"
 
 
-def test_status_carries_the_decision_reasons(main_in_shadow, tmp_path):
+def test_status_carries_the_decision_reasons(main_in_shadow, tmp_path, monkeypatch):
     from sc import decision as dec
     from datetime import datetime
     main = main_in_shadow
     d = dec.decide(datetime(2026, 10, 21, 22, 7), {datetime(2026, 10, 21, 22, 0): 0},
                    {"hot": {}, "cold": {"2026-10-21T22:00:00": 5e5}}, 6e6, 7e6, rng=lambda a, b: 1.0)
-    main.last_decision = d
+    monkeypatch.setattr(main, "last_decision", d)
     plc = PLCShadow(initial_state="ColdMode1", schedule=SCHEDULE)
     main.run_cycle(plc, tmp_path / "dades.csv", state_dir=tmp_path)
     st = json.loads((tmp_path / "status.json").read_text(encoding="utf-8"))
     assert st["decision"]["reasons"] and "cop_ok" in st["decision"]["codes"]
     assert st["decision"]["cop"] == 5e5 / 9000 and st["decision"]["frame_start"] == "2026-10-21 22:00:00"   # pump energy in J
     assert st["decision"]["action"] == "si"          # row label still wins
+    assert st["plc_state"] == "ColdMode1"            # 'si' in a cold frame keeps the cold mode (no toggling)
+
+
+def test_run_cycle_si_in_a_cold_frame_keeps_cold_mode(main_in_shadow, tmp_path, monkeypatch):
+    """With the frame_mode policy 'si' selects the mode of the frame instead of toggling cold <-> heat."""
+    from sc import decision as dec
+    from datetime import datetime
+    main = main_in_shadow
+    d = dec.decide(datetime(2026, 10, 21, 22, 7), {datetime(2026, 10, 21, 22, 0): 0},
+                   {"hot": {}, "cold": {"2026-10-21 22:00": 5e5}}, 6e6, 7e6, rng=lambda a, b: 1.0)
+    assert d.action == 1 and d.frame_mode == "cold"
+    monkeypatch.setattr(main, "last_decision", d)
+    plc = PLCShadow(initial_state="ColdMode1", schedule=SCHEDULE)
+    main.run_cycle(plc, tmp_path / "dades.csv", state_dir=tmp_path)
+    assert plc.get_system_state()[0] == "ColdMode1"
+    st = json.loads((tmp_path / "status.json").read_text(encoding="utf-8"))
+    assert st["plc_state"] == "ColdMode1" and st["decision"]["next_state"] == "ColdMode1"

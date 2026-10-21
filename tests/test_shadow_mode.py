@@ -209,6 +209,7 @@ def test_real_controller_reads_the_cover_from_the_limit_switches(monkeypatch, fc
 def test_run_cycle_in_shadow_logs_what_would_be_applied(tmp_path, monkeypatch):
     import sc.main as main
     monkeypatch.setattr(main, "get_decision", lambda: {"respuesta": "si"})
+    monkeypatch.setattr(main, "last_decision", None)        # no frame info: the original state machine toggles
     monkeypatch.setattr(main, "last_decision_row", ["2026-10-20 10:00:00", True, 0.0, "si", "hot", 1, 2, 3, 4])
     out = tmp_path / "dades.csv"
     plc = PLCShadow(initial_state="ColdMode1", schedule=SCHEDULE)

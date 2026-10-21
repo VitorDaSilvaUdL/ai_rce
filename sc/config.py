@@ -39,6 +39,12 @@ MIN_TIME_STEP = _raw["pump"]["min_time_step_minutes"]
 # original hasta 2026-10-21: COP = J / Wh, 3600 veces mayor). Ver sc/decision.py.
 COP_PUMP_ENERGY_UNITS = _raw["pump"].get("cop_pump_energy_units", "J")
 
+# Correcciones del control (2026-10-21). Valores antiguos entre paréntesis, para reproducir la campaña 2025.
+CONTROL = _raw.get("control", {})
+FRAME_KEY_FORMAT = CONTROL.get("frame_key_format", "forecast")      # "forecast" | "iso" (antiguo)
+DEMAND_ADJUST = CONTROL.get("demand_adjust", "frame_prod")          # "frame_prod" | "pump_wh" (antiguo)
+NEXT_STATE_POLICY = CONTROL.get("next_state_policy", "frame_mode")  # "frame_mode" | "toggle" (antiguo)
+
 # dades.csv: ruta relativa a la carpeta del proyecto, o absoluta
 OUTPUT_CSV = _raw["paths"]["output_csv"]
 OUTPUT_CSV_PATH = Path(OUTPUT_CSV) if Path(OUTPUT_CSV).is_absolute() else PROJECT_DIR / OUTPUT_CSV

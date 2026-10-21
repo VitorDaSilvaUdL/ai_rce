@@ -1,15 +1,18 @@
 """The real-time decision of the control loop as a pure function with reasons.
 
 decide() is step 5 of get_decision() (sc/main.py) extracted without changing its behaviour, so that the panel can
-explain every decision and simulate one from chosen inputs. One quirk of the original is kept on purpose and
-reported in the reasons instead of fixed here: the production of the active frame is looked up with an ISO key
-('2026-10-21T22:00:00') while the forecast uses '2026-10-21 22:00' keys, so the frame production is usually 0 and the
-COP 0 (frame_prod_missing). Changing it is a decision of the project.
+explain every decision and simulate one from chosen inputs. Three faults of the original control (campaign 2025) are corrected here, each with a legacy option so the old
+behaviour can be reproduced (decision of V. da Silva, 2026-10-21; see README «Cambios respecto al control original»):
 
-COP units (corrected 2026-10-21, decision of V. da Silva): the original computed the pump energy of a cycle as
-P_bomba_watts * time_step_hours = 2.5 Wh and divided the production in J by it (COP in J/Wh, 3600 times too high).
-With pump_energy_units="J" (default) the pump energy is P * t * 3600 = 9000 J and the COP is dimensionless;
-pump_energy_units="Wh" reproduces the original (sc config: pump.cop_pump_energy_units).
+- frame_key_format: the production of the active frame was looked up with an ISO key ('2026-10-21T22:00:00') while
+  the forecast uses '2026-10-21 22:00' keys, so the frame production was always 0, the COP 0 and the answer never
+  'si'. "forecast" (default) uses the forecast's own key; "iso" reproduces the original.
+- pump_energy_units: the pump energy of a cycle was P_bomba_watts * time_step_hours = 2.5 Wh and the production in J
+  was divided by it (COP in J/Wh, 3600 times too high). "J" (default) uses 9000 J; "Wh" reproduces the original.
+- demand_adjust: when the pump ran, 2.5 Wh were subtracted from a demand in J, so the demand was never covered.
+  "frame_prod" (default) subtracts the predicted production of the frame (J); "pump_wh" reproduces the original.
+The fourth fault ('si' toggled the mode instead of selecting the mode of the frame) is corrected in sc/main.py
+(control.next_state_policy).
 """
 import random
 from dataclasses import dataclass, field, asdict
@@ -39,6 +42,8 @@ class Decision:
     demand_after: float
     plan_reset: bool
     pump_energy_units: str = "J"
+    frame_key_format: str = "forecast"
+    demand_adjust: str = "frame_prod"
     codes: list = field(default_factory=list)
     reasons: list = field(default_factory=list)
 
@@ -51,7 +56,7 @@ class Decision:
 
 def decide(now, temp_mode, prod_data, current_dem_target, total_predicted_production, *, action_prev=0,
            mode_prev="hot", p_bomba_watts=10, time_step_hours=0.25, min_time_step=15, cop_min=1.0,
-           rng=random.uniform, pump_energy_units="J"):
+           rng=random.uniform, pump_energy_units="J", frame_key_format="forecast", demand_adjust="frame_prod"):
     """One real-time decision. temp_mode: {frame_start datetime: 1 hot | 0 cold}; prod_data: {"hot": {key: J},
     "cold": {...}}. Returns a Decision; the caller applies demand_after / plan_reset to its state."""
     codes, reasons = [], []
@@ -77,19 +82,27 @@ def decide(now, temp_mode, prod_data, current_dem_target, total_predicted_produc
                 in_frame = True
                 frame_start = start
                 frame_mode = "hot" if kind else "cold"
-                frame_key = start.isoformat(timespec="seconds")
+                iso_key = start.isoformat(timespec="seconds")
+                forecast_key = start.strftime("%Y-%m-%d %H:%M")
+                candidates = [forecast_key, iso_key] if frame_key_format == "forecast" else [iso_key]
+                frame_key = candidates[0]
                 codes.append(f"in_frame:{frame_mode}")
                 reasons.append(f"Franja planificada de {'calor' if frame_mode == 'hot' else 'frío'} activa "
                                f"({start:%H:%M}–{start + timedelta(minutes=min_time_step):%H:%M})")
                 series = prod_data.get(frame_mode, {})
-                if frame_key in series:
-                    frame_prod = float(series[frame_key])
+                found = next((k for k in candidates if k in series), None)
+                if found is not None:
+                    frame_key = found
+                    frame_prod = float(series[found])
                     codes.append("frame_prod")
                     reasons.append(f"Producción prevista en la franja: {kwh(frame_prod)}")
+                elif frame_key_format == "forecast":
+                    codes.append("frame_prod_missing")
+                    reasons.append(f"Sin dato de producción para la franja «{forecast_key}» en la previsión: cuenta 0")
                 else:
                     codes.append("frame_prod_missing")
-                    reasons.append("Sin dato de producción para la franja: el control la busca con la clave "
-                                   f"«{frame_key}» y la previsión usa «{start:%Y-%m-%d %H:%M}», así que cuenta 0")
+                    reasons.append("Sin dato de producción para la franja (formato antiguo): el control la busca con la "
+                                   f"clave «{iso_key}» y la previsión usa «{forecast_key}», así que cuenta 0")
                 cop = frame_prod / pump_energy if pump_energy > 0 else 0.0
                 codes.append(f"cop:{cop:.2f}")
                 if pump_energy_units == "J":
@@ -117,10 +130,17 @@ def decide(now, temp_mode, prod_data, current_dem_target, total_predicted_produc
     demand_after = demand
     if not insufficient:                      # the original adjusts the demand only in this branch
         if demand > 0:
-            produced = p_bomba_watts * time_step_hours * rng(0.8, 1.2) if action == 1 else 0
+            if action != 1:
+                produced = 0
+            elif demand_adjust == "frame_prod":
+                produced = frame_prod * rng(0.8, 1.2)                    # J, the predicted production of the frame
+            else:
+                produced = p_bomba_watts * time_step_hours * rng(0.8, 1.2)   # original: 2.5 Wh subtracted from J
             demand_after = max(0, demand - produced)
             codes.append("demand_adjusted")
-            reasons.append(f"Demanda restante: de {kwh(demand)} a {kwh(demand_after)}")
+            how = (" (se descuenta la producción prevista de la franja)" if action == 1 and demand_adjust == "frame_prod"
+                   else " (formato antiguo: se descuentan 2,5 Wh)" if action == 1 else "")
+            reasons.append(f"Demanda restante: de {kwh(demand)} a {kwh(demand_after)}{how}")
             if demand_after <= 0:
                 plan_reset = True
                 demand_after = 0.0
@@ -136,5 +156,20 @@ def decide(now, temp_mode, prod_data, current_dem_target, total_predicted_produc
     return Decision(now=now, action=safe, label=LABELS[safe], mode=mode, in_time_frame=in_frame,
                     frame_start=frame_start, frame_mode=frame_mode, frame_prod_j=frame_prod, frame_key=frame_key,
                     pump_energy_wh=pump_wh, cop=cop, demand_before=demand, demand_after=demand_after,
-                    pump_energy_units=pump_energy_units,
+                    pump_energy_units=pump_energy_units, frame_key_format=frame_key_format, demand_adjust=demand_adjust,
                     plan_reset=plan_reset, codes=codes, reasons=reasons)
+
+
+STATE_OF_FRAME_MODE = {"cold": "ColdMode1", "hot": "HeatMode1"}
+
+
+def next_state(decision, estado_actual, plc, now=None, policy="frame_mode"):
+    """PLC state after a decision. policy="frame_mode" (default): 'si' selects the mode of the active frame
+    (cold -> ColdMode1, hot -> HeatMode1) instead of toggling; 'no' keeps the state; 'parada' stops; the automatic
+    state of the PLC is never left by the control. policy="toggle": the original state machine
+    (PLCController.decide_next_state_from_nn: 'si' toggles cold <-> heat, from parada the weekly schedule decides)."""
+    label = decision.label if decision is not None else "parada"
+    if policy == "frame_mode" and decision is not None and decision.action == 1 and decision.frame_mode \
+            and estado_actual != "AutomaticMode":
+        return STATE_OF_FRAME_MODE[decision.frame_mode]
+    return plc.decide_next_state_from_nn(label, estado_actual, now=now)

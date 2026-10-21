@@ -9,7 +9,7 @@ so a replayed past day uses the measured tank and sensor data of that day but th
 import math
 from datetime import datetime, timedelta, date as date_type
 
-from sc.decision import decide
+from sc.decision import decide, next_state as decision_next_state
 from sc.plc_shadow import PLCShadow, DEFAULT_SCHEDULE
 from sc.cycle_log import state_outputs
 from sc.utils.read_data import get_mode
@@ -132,11 +132,11 @@ def _forecast_summary(info, now):
             "rain": info.get("rain-prediction")}
 
 
-def _outcome(label, state, now, alarm, schedule):
+def _outcome(d, state, now, alarm, schedule, policy="frame_mode"):
     plc = PLCShadow(initial_state=state, schedule=schedule or DEFAULT_SCHEDULE)
-    next_state = plc.decide_next_state_from_nn(label, state, now=now)
-    out = state_outputs(next_state, alarm=alarm)
-    return next_state, out
+    nxt = decision_next_state(d, state, plc, now=now, policy=policy)
+    out = state_outputs(nxt, alarm=alarm)
+    return nxt, out
 
 
 def simulate(now, readings, overrides, state, alarm, predict, schedule=None, demand_j=None):
@@ -152,7 +152,7 @@ def simulate(now, readings, overrides, state, alarm, predict, schedule=None, dem
     demand = plan["target_j"] if demand_j is None else float(demand_j)
     d = decide(now, temp_mode, info["energy-production"], demand, plan["total_j"], action_prev=0,
                mode_prev=kind, rng=lambda a, b: 1.0, **PUMP)
-    next_state, out = _outcome(d.label, state, now, alarm, schedule)
+    next_state, out = _outcome(d, state, now, alarm, schedule)
     inputs = {k: v for k, v in samples["data"][-1].items() if k in SAMPLE_VARS}
     return {
         "now": now.isoformat(sep=" ", timespec="minutes"), "state": state, "alarm": alarm,
@@ -203,7 +203,7 @@ def replay_day(day, readings, state0, predict, schedule=None):
         action, mode, demand = d.action, d.mode, d.demand_after
         if d.plan_reset:
             total = 0.0
-        next_state, out = _outcome(d.label, state, t, False, schedule)
+        next_state, out = _outcome(d, state, t, False, schedule)
         steps.append({"ts": t.isoformat(sep=" ", timespec="minutes"), "action": d.label, "in_frame": bool(d.in_time_frame),
                       "cop": round(d.cop, 2), "state": state, "next_state": next_state, "cover": out["cover"],
                       "plc_mode": out["plc_mode"], "demand_kwh": round(demand / 3.6e6, 3), "plan": kind,
