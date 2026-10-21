@@ -408,7 +408,8 @@ def get_decision():
         # 5) Lògica d'acció en temps real (sc/decision.py: la misma lógica, con motivos para el panel)
         d = decision.decide(now, temp_mode, prod_data, current_dem_target, total_predicted_production,
                             action_prev=action, mode_prev=mode, p_bomba_watts=P_bomba_watts,
-                            time_step_hours=time_step_hours, min_time_step=min_time_step, cop_min=COP_MIN)
+                            time_step_hours=time_step_hours, min_time_step=min_time_step, cop_min=COP_MIN,
+                            rng=random.uniform)
         last_decision = d
         for code in d.codes:                       # las mismas líneas de log que antes, para quien las lea
             if code == "insufficient_production":
