@@ -46,7 +46,7 @@ def read_status(state_dir, now):
 
 
 NUMERIC = {"current_dem_target", "hot_prod", "cold_prod", "hot_dem", "cold_dem"}
-INTEGER = {"plc_mode_code", "cover_open"}
+INTEGER = {"plc_mode_code", "cover_open", "plc_alarm"}
 
 
 def read_decisions(path, since, max_bytes=2_000_000):

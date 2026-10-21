@@ -161,6 +161,15 @@ responde y de que ningún otro programa está conectado), mandos reales como tra
 (`panel/plc_ops.py`; exigen el mando tomado y el control en pausa) y estado de salida configurable al volver a SOMBRA.
 Probado contra `sc/plc_dummy.py` (PLC Snap7 simulado); en el laboratorio solo con autorización del equipo.
 
+### Cambios respecto al control original (campaña 2025)
+
+| Qué | Antes (hasta 2026-10-21) | Ahora | Dónde |
+|---|---|---|---|
+| **Unidades del COP** | Consumo de la bomba en una franja = `P_bomba_watts × time_step_hours` = 10 W × 0,25 h = **2,5 Wh**, y COP = producción prevista **en J** / 2,5 Wh. Un COP en J/Wh, unas 3600 veces mayor que el real: con 500 kJ de producción salía 200 000, y el umbral `COP ≥ 1` no filtraba nada | Consumo de la bomba en **J** (2,5 Wh × 3600 = 9000 J) y COP adimensional: 500 kJ → 55,6; 5 kJ → 0,56 < 1 → no arranca. Configurable: `pump.cop_pump_energy_units = "J"` (por defecto) o `"Wh"` (comportamiento antiguo, para reproducir la campaña) | `sc/decision.py`, `sc/config.py` |
+| Decisión explicable | Lógica dentro de `get_decision()` | `sc/decision.py::decide()` devuelve la misma decisión con motivos; comportamiento congelado por tests de regresión | `sc/decision.py`, `tests/test_decision.py` |
+| Clave de la franja | Se busca la producción con `AAAA-MM-DDTHH:MM:SS` y la previsión usa `AAAA-MM-DD HH:MM`: la producción de la franja es 0 y la IA nunca dice «sí» (campaña 2025: 543 ciclos en franja, 0 «sí») | **Sin cambiar** (pendiente de decisión); el panel lo muestra en los motivos | `sc/decision.py` (`frame_prod_missing`) |
+| Ajuste de la demanda restante | Resta `P_bomba_watts × time_step_hours × aleatorio(0,8–1,2)` (2,5 Wh) a una demanda en J | Sin cambiar: es un marcador de posición de la producción real medida | `sc/decision.py` |
+
 Variables de entorno útiles: `SC_CONFIG` (ruta a un JSON de configuración distinto de `sc/config.<env>.json`),
 `PANEL_WORK_DIR` (carpeta para `state/`, registros y `sc.log` fuera del repositorio, para pruebas),
 `SC_SMTP_PASSWORD` / `GMAIL_APP_PASSWORD` o `sc/secrets.local.json` (contraseñas; `sc/credentials.py`).

@@ -23,7 +23,7 @@ DECISION_HEADER = [
 ]
 STATE_HEADER = [
     "execution", "plc_state_before", "plc_state", "plc_mode", "plc_mode_code",
-    "cover", "cover_open", "cover_measured", "pump_b1", "pump_b2", "ev1", "ev2",
+    "cover", "cover_open", "cover_measured", "pump_b1", "pump_b2", "ev1", "ev2", "plc_alarm",
 ]
 HEADER = DECISION_HEADER + STATE_HEADER
 
@@ -70,6 +70,7 @@ def state_columns(execution, state_before, state, cover_measured="", alarm=False
         "plc_state_before": state_before if state_before is not None else "",
         "plc_state": state if state is not None else "",
         "cover_measured": cover_measured or "",
+        "plc_alarm": 1 if alarm else 0,
         **out,
     }
     return [values[k] for k in STATE_HEADER]

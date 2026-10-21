@@ -116,8 +116,13 @@ def test_state_columns_follow_the_header():
     assert row == {
         "execution": "shadow", "plc_state_before": "Parada", "plc_state": "ColdMode1",
         "plc_mode": "cold", "plc_mode_code": 2, "cover": "open", "cover_open": 1, "cover_measured": "",
-        "pump_b1": "auto", "pump_b2": "on", "ev1": "on", "ev2": "off",
+        "pump_b1": "auto", "pump_b2": "on", "ev1": "on", "ev2": "off", "plc_alarm": 0,
     }
+
+
+def test_state_columns_record_the_alarm():
+    row = dict(zip(cycle_log.STATE_HEADER, cycle_log.state_columns("real", "ColdMode1", "ColdMode1", alarm=True)))
+    assert row["plc_alarm"] == 1 and row["cover"] == "closed"
 
 
 # ----------------------------------------------------------------------------------------------- dades.csv
