@@ -14,7 +14,9 @@ from sc import decision as dec
 NOW = datetime(2026, 10, 21, 22, 7, 0)
 F = datetime(2026, 10, 21, 22, 0)
 PROD = {"hot": {}, "cold": {"2026-10-21 22:00": 500000.0}}
-PARAMS = dict(p_bomba_watts=10, time_step_hours=0.25, min_time_step=15, cop_min=1.0, rng=lambda a, b: 1.0)
+PARAMS = dict(p_bomba_watts=10, time_step_hours=0.25, min_time_step=15, cop_min=1.0, rng=lambda a, b: 1.0,
+              pump_energy_units="Wh")        # the regression freezes the ORIGINAL units (J / Wh)
+PARAMS_J = {**PARAMS, "pump_energy_units": "J"}
 
 
 def run(temp_mode, prod, demand, total, action_prev=0, mode_prev="hot"):
@@ -40,7 +42,7 @@ def test_regression_against_the_captured_behaviour(name, temp_mode, prod, demand
 def test_when_the_frame_key_matches_the_pump_turns_on_and_demand_is_reduced():
     prod = {"hot": {}, "cold": {"2026-10-21T22:00:00": 500000.0}}       # the key format the lookup expects
     d = run({F: 0}, prod, 6e6, 7e6)
-    assert d.action == 1 and d.label == "si" and d.cop == 500000.0 / 2.5
+    assert d.action == 1 and d.label == "si" and d.cop == 500000.0 / 2.5          # legacy units in this test
     assert d.demand_after == 6e6 - 10 * 0.25 * 1.0 and d.plan_reset is False
     assert "cop_ok" in d.codes and "frame_prod" in d.codes
 
@@ -66,6 +68,28 @@ def test_out_of_frame_and_insufficient_reasons():
     assert run({F: 0}, PROD, 6e6, -1).codes == ["insufficient_production"]
     d = run({}, PROD, 0.0, 0.0)
     assert d.codes[-1] == "no_pending_demand" and d.action == 0
+
+
+# ----------------------------------------------------------------------------------------------- COP units
+def test_cop_in_joules_is_the_default_and_dimensionless():
+    prod = {"hot": {}, "cold": {"2026-10-21T22:00:00": 500000.0}}
+    d = dec.decide(NOW, {F: 0}, prod, 6e6, 7e6, action_prev=0, mode_prev="hot", **PARAMS_J)
+    assert d.pump_energy_units == "J" and d.cop == pytest.approx(500000.0 / 9000.0)
+    assert d.action == 1 and "9000 J" in " ".join(d.reasons)
+    default = dec.decide(NOW, {F: 0}, prod, 6e6, 7e6, rng=lambda a, b: 1.0)
+    assert default.pump_energy_units == "J" and default.cop == d.cop
+
+
+def test_legacy_units_give_the_old_cop():
+    prod = {"hot": {}, "cold": {"2026-10-21T22:00:00": 500000.0}}
+    d = dec.decide(NOW, {F: 0}, prod, 6e6, 7e6, action_prev=0, mode_prev="hot", **PARAMS)
+    assert d.cop == 500000.0 / 2.5 and "unidades antiguas" in " ".join(d.reasons)
+
+
+def test_small_production_no_longer_passes_the_cop_gate_in_joules():
+    prod = {"hot": {}, "cold": {"2026-10-21T22:00:00": 5000.0}}        # 5 kJ < 9 kJ of pump energy
+    assert dec.decide(NOW, {F: 0}, prod, 6e6, 7e6, **PARAMS).action == 1          # legacy: 5000/2.5 = 2000 >= 1
+    assert dec.decide(NOW, {F: 0}, prod, 6e6, 7e6, **PARAMS_J).action == 0        # corrected: 0.56 < 1
 
 
 def test_as_dict_is_json_friendly():

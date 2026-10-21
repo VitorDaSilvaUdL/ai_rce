@@ -35,6 +35,9 @@ IR_DIR = _raw["sc"]["ir_dir"]
 
 P_BOMBA_WATTS = _raw["pump"]["power_watts"]
 MIN_TIME_STEP = _raw["pump"]["min_time_step_minutes"]
+# Unidades del consumo de la bomba al calcular el COP: "J" (corregido, por defecto) o "Wh" (comportamiento
+# original hasta 2026-10-21: COP = J / Wh, 3600 veces mayor). Ver sc/decision.py.
+COP_PUMP_ENERGY_UNITS = _raw["pump"].get("cop_pump_energy_units", "J")
 
 # dades.csv: ruta relativa a la carpeta del proyecto, o absoluta
 OUTPUT_CSV = _raw["paths"]["output_csv"]

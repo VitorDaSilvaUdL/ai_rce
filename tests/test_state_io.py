@@ -116,5 +116,5 @@ def test_status_carries_the_decision_reasons(main_in_shadow, tmp_path):
     main.run_cycle(plc, tmp_path / "dades.csv", state_dir=tmp_path)
     st = json.loads((tmp_path / "status.json").read_text(encoding="utf-8"))
     assert st["decision"]["reasons"] and "cop_ok" in st["decision"]["codes"]
-    assert st["decision"]["cop"] == 5e5 / 2.5 and st["decision"]["frame_start"] == "2026-10-21 22:00:00"
+    assert st["decision"]["cop"] == 5e5 / 9000 and st["decision"]["frame_start"] == "2026-10-21 22:00:00"   # pump energy in J
     assert st["decision"]["action"] == "si"          # row label still wins

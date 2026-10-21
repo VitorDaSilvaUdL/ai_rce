@@ -19,7 +19,7 @@ from .plc_controller import PLCController
 from sc.config import (
     PREDICT_URL, P_BOMBA_WATTS, MIN_TIME_STEP,
     PLC_IP, PLC_RACK, PLC_SLOT, OUTPUT_CSV, ITER_TIME_SEC,
-    PLC_CONFIG, OUTPUT_CSV_PATH
+    PLC_CONFIG, OUTPUT_CSV_PATH, COP_PUMP_ENERGY_UNITS
 )
 from sc.plc_shadow import make_plc
 from sc import cycle_log
@@ -409,7 +409,7 @@ def get_decision():
         d = decision.decide(now, temp_mode, prod_data, current_dem_target, total_predicted_production,
                             action_prev=action, mode_prev=mode, p_bomba_watts=P_bomba_watts,
                             time_step_hours=time_step_hours, min_time_step=min_time_step, cop_min=COP_MIN,
-                            rng=random.uniform)
+                            rng=random.uniform, pump_energy_units=COP_PUMP_ENERGY_UNITS)
         last_decision = d
         for code in d.codes:                       # las mismas líneas de log que antes, para quien las lea
             if code == "insufficient_production":
@@ -422,6 +422,8 @@ def get_decision():
             elif code == "frame_prod_missing":
                 logger.info(f"{now}: Sense dades de producció per a la franja actual en mode {d.frame_mode}.")
             elif code.startswith("cop:"):
+                joules = f" ({d.pump_energy_wh * 3600:g} J)" if d.pump_energy_units == "J" else ""
+                logger.info(f"{now}: Energia consumida per la bomba en aquesta franja: {d.pump_energy_wh:.2f} Wh{joules}.")
                 logger.info(f"{now}: COP calculat: {d.cop:.2f}.")
             elif code == "cop_ok":
                 logger.info(f"{now}: COP >= {COP_MIN} i hi ha demanda. Bomba ON (action=1). Ttank = 1.")
