@@ -149,3 +149,6 @@ a { color: var(--accent); }
 .dialog { background: #fff; border-radius: 12px; padding: 24px 28px; width: min(420px, 92vw); }
 .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: var(--ink); color: #fff; padding: 12px 18px; border-radius: 8px; z-index: 60; max-width: 80vw; }
 .toast.bad { background: var(--bad); } .toast.ok { background: var(--ok); }
+
+.reasons.small { font-size: 14px; margin: 6px 0; padding-left: 18px; }
+.reasons.small li { margin: 2px 0; font-size: 14px; }

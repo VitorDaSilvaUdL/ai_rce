@@ -103,3 +103,18 @@ def test_run_cycle_without_decision_still_writes_status(main_in_shadow, tmp_path
     main.run_cycle(plc, tmp_path / "dades.csv", state_dir=tmp_path)
     st = json.loads((tmp_path / "status.json").read_text(encoding="utf-8"))
     assert st["decision"]["action"] == "" and st["plc_state"] == "Parada"
+
+
+def test_status_carries_the_decision_reasons(main_in_shadow, tmp_path):
+    from sc import decision as dec
+    from datetime import datetime
+    main = main_in_shadow
+    d = dec.decide(datetime(2026, 10, 21, 22, 7), {datetime(2026, 10, 21, 22, 0): 0},
+                   {"hot": {}, "cold": {"2026-10-21T22:00:00": 5e5}}, 6e6, 7e6, rng=lambda a, b: 1.0)
+    main.last_decision = d
+    plc = PLCShadow(initial_state="ColdMode1", schedule=SCHEDULE)
+    main.run_cycle(plc, tmp_path / "dades.csv", state_dir=tmp_path)
+    st = json.loads((tmp_path / "status.json").read_text(encoding="utf-8"))
+    assert st["decision"]["reasons"] and "cop_ok" in st["decision"]["codes"]
+    assert st["decision"]["cop"] == 5e5 / 2.5 and st["decision"]["frame_start"] == "2026-10-21 22:00:00"
+    assert st["decision"]["action"] == "si"          # row label still wins

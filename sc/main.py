@@ -519,6 +519,7 @@ def build_status(plc, now, estado_actual, nuevo_estado, applied_state, control, 
         "plan": {"target_demand_j": current_dem_target, "selected_frames": list(selected_time_frames),
                  "predicted_production_j": total_predicted_production},
         "decision": {
+            **(last_decision.as_dict() if last_decision else {"reasons": [], "codes": []}),
             "action": dec.get("action", ""), "next_state": nuevo_estado,
             "in_time_frame": dec.get("in_time_frame", None), "mode": dec.get("mode", ""),
             "hot_prod": dec.get("hot_prod", ""), "cold_prod": dec.get("cold_prod", ""),

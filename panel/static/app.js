@@ -81,6 +81,7 @@
   }));
   function onTab(name) {
     if (name === "lecturas") loadReadings();
+    if (name === "control" && status) renderControl(status);
     if (name === "historial") loadHistory();
     if (name === "diario") loadDiary();
     if (name === "ajustes") loadSettings();
@@ -132,8 +133,11 @@
     const d = c.decision || {};
     if (c.cycle_time) {
       const act = {si: "Sí: cambiar de modo", no: "No: mantener", parada: "Parada", "": "sin decisión"}[d.action] || d.action;
+      const why = (d.reasons || []).slice(0, 3).map((x) => `<li>${esc(x)}</li>`).join("");
       $("#decision").innerHTML = `<div class="when">${esc(fmtTs(c.cycle_time))}</div><div><b>${esc(act)}</b> → ${esc(STATE_ES[d.next_state] || d.next_state || "")}${c.paused ? " <i>(no aplicado: control en pausa)</i>" : ""}</div>` +
-        `<div class="muted">Franja activa: ${d.in_time_frame === true ? "sí" : d.in_time_frame === false ? "no" : "—"} · producción prevista ahora: calor ${fmtNum(d.hot_prod / 3.6e6, 2)} kWh, frío ${fmtNum(d.cold_prod / 3.6e6, 2)} kWh</div>`;
+        (why ? `<ul class="reasons small">${why}</ul>` : "") +
+        `<div class="muted">Franja activa: ${d.in_time_frame === true ? "sí" : d.in_time_frame === false ? "no" : "—"} · producción prevista ahora: calor ${fmtNum(d.hot_prod / 3.6e6, 2)} kWh, frío ${fmtNum(d.cold_prod / 3.6e6, 2)} kWh · <a href="#" data-goto="control">ver el plan</a></div>`;
+      $("#decision a[data-goto]").addEventListener("click", (ev) => { ev.preventDefault(); $("#tabs button[data-tab=control]").click(); });
       const p = c.plan || {};
       $("#plan").textContent = `Plan: demanda pendiente ${fmtNum((p.target_demand_j || 0) / 3.6e6, 2)} kWh · franjas elegidas: ${(p.selected_frames || []).length} · producción prevista del plan: ${fmtNum((p.predicted_production_j || 0) / 3.6e6, 2)} kWh`;
     } else { $("#decision").textContent = "El control todavía no ha decidido nada."; $("#plan").textContent = ""; }
@@ -144,6 +148,35 @@
     ul.innerHTML = s.alerts.length ? s.alerts.map((a) => `<li class="${a.level}"><span class="t">${esc(a.title)}</span><span class="a">→ ${esc(a.action)}</span>${a.detail ? `<span class="d">${esc(a.detail)}</span>` : ""}</li>`).join("") : '<li class="ok">Todo en orden</li>';
     $("#main-readings").innerHTML = s.readings.map((r) => `<div class="rd ${r.stale ? "stale" : r.frozen ? "frozen" : ""}"><div class="l">${esc(r.label)}${r.system === "RCE-b" ? " (B)" : ""}</div><div><span class="v">${fmtNum(r.value, r.unit === "W/m²" ? 0 : 1)}</span><span class="u">${esc(r.unit)}</span></div><div class="t">${esc(fmtTs(r.ts))} ${r.stale ? "· sin lecturas" : r.frozen ? "· sin cambios" : ""}</div></div>`).join("");
   }
+  // ------------------------------------------------------------------ Control (plan y previsiones)
+  function renderControl(s) {
+    const c = s.control || {}, p = c.plan || {}, f = c.forecast || {}, d = c.decision || {};
+    const frames = (p.selected_frames || []).slice().sort();
+    $("#ctl-plan").innerHTML = [
+      ["Demanda pendiente", `${fmtNum((p.target_demand_j || 0) / 3.6e6, 2)} kWh`],
+      ["Producción prevista del plan", `${fmtNum((p.predicted_production_j || 0) / 3.6e6, 2)} kWh` + (p.predicted_production_j === -1 ? " (insuficiente: no se encontró plan)" : "")],
+      ["Franjas planificadas", frames.length ? `${frames.length} franjas de 15 min · primera ${fmtTs(frames[0])} · última ${fmtTs(frames[frames.length - 1])}` : "ninguna"],
+      ["Previsiones actualizadas", f.updated_day != null ? `día ${f.updated_day}` : "—"],
+      ["Último ciclo", c.cycle_time ? fmtTs(c.cycle_time) : "—"],
+    ].map(([k, v]) => `<b>${esc(k)}</b><span>${esc(v)}</span>`).join("");
+    const sch = c.schedule;
+    $("#ctl-schedule").textContent = sch ? `Calor ${sch.heat_start.slice(0, 5)}–${sch.heat_end.slice(0, 5)} · parada hasta ${sch.parada_end.slice(0, 5)} · el resto frío · fines de semana parada (solo cuando el RCE está en parada y la IA dice «sí»)` : "En modo real el horario se lee del PLC (DB80/83).";
+    $("#ctl-reasons").innerHTML = (d.reasons || []).length ? d.reasons.map((x) => `<li>${esc(x)}</li>`).join("") : "<li class='muted'>Sin decisión todavía</li>";
+    const tNow = Date.parse((s.now || "").replace(" ", "T")) / 1000;
+    const kv = (obj, parse) => Object.entries(obj || {}).map(([k, v]) => [parse(k), v / 3.6e6]).filter((x) => !isNaN(x[0])).sort((a, b) => a[0] - b[0]);
+    const p15 = (k) => Date.parse(k.replace(" ", "T") + (k.length === 16 ? ":00" : "")) / 1000;
+    const ph = (k) => Date.parse(k) / 1000;
+    const prodHot = kv(f.prod_hot, p15), prodCold = kv(f.prod_cold, p15);
+    const frameSeries = frames.map((k) => [p15(k.length > 16 ? k.slice(0, 16) : k), 1]);
+    const toPts = (arr) => arr.map(([t, v]) => [new Date(t * 1000).toISOString(), v]);
+    const span = prodHot.concat(prodCold);
+    const xr = span.length ? [Math.min(tNow, span[0][0]) - 1800, span[span.length - 1][0] + 1800] : [tNow - 3600, tNow + 48 * 3600];
+    lineChart("ch-prod", [["Calor previsto", toPts(prodHot), "#c2410c"], ["Frío previsto", toPts(prodCold), "#0b5fa5"], ["Franja planificada", toPts(frameSeries), "#1e7a46"]], "kWh / 15 min", {xr, iso: true});
+    lineChart("ch-dem", [["Demanda de calor", toPts(kv(f.demand_hot, ph)), "#c2410c"], ["Demanda de frío", toPts(kv(f.demand_cold, ph)), "#0b5fa5"]], "kWh / h", {xr, iso: true, step: true});
+    const rain = f.rain && typeof f.rain === "object" ? Object.entries(f.rain) : [];
+    $("#ctl-rain").textContent = rain.length ? rain.map(([k, v]) => `${k}: ${typeof v === "number" ? fmtNum(v, 1) + " mm" : JSON.stringify(v)}`).join(" · ") : "Sin previsión de lluvia en el estado del control";
+  }
+
   $("#btn-start").addEventListener("click", () => act("/api/system/start", "Arrancando…"));
   $("#btn-stop").addEventListener("click", () => confirm("¿Parar el control y la predicción?") && act("/api/system/stop", "Parando…"));
   $("#btn-restart").addEventListener("click", () => act("/api/system/restart", "Reiniciando…"));
@@ -250,9 +283,10 @@
     el.innerHTML = "";
     const nonEmpty = series.filter((s) => s[1].length);
     if (!nonEmpty.length) { el.innerHTML = "<div class='muted' style='padding:20px'>Sin datos en el periodo</div>"; return; }
-    const xsSet = new Set(); nonEmpty.forEach((s) => s[1].forEach((p) => xsSet.add(Date.parse(p[0].replace(" ", "T")) / 1000)));
+    const px = (t) => Date.parse(o.iso ? t : t.replace(" ", "T")) / 1000;
+    const xsSet = new Set(); nonEmpty.forEach((s) => s[1].forEach((p) => xsSet.add(px(p[0]))));
     const xs = Array.from(xsSet).sort((a, b) => a - b), idx = new Map(xs.map((x, i) => [x, i]));
-    const data = [xs].concat(nonEmpty.map((s) => { const ys = new Array(xs.length).fill(null); s[1].forEach((p) => { ys[idx.get(Date.parse(p[0].replace(" ", "T")) / 1000)] = p[1]; }); return ys; }));
+    const data = [xs].concat(nonEmpty.map((s) => { const ys = new Array(xs.length).fill(null); s[1].forEach((p) => { ys[idx.get(px(p[0]))] = p[1]; }); return ys; }));
     const opts = {width: el.clientWidth || 800, height: el.clientHeight || 220,
       scales: {x: {time: true, range: o.xr ? () => o.xr : undefined}, y: {range: o.yr ? (typeof o.yr === "function" ? o.yr : () => o.yr) : undefined}},
       axes: [{}, {label: unit, size: 60, splits: o.ticks ? () => o.ticks : undefined}],

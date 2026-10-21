@@ -27,6 +27,7 @@
 <nav class="tabs" id="tabs">
   <button data-tab="inicio" class="active">Inicio</button>
   <button data-tab="lecturas">Lecturas</button>
+  <button data-tab="control">Control</button>
   <button data-tab="mandos">Mandos</button>
   <button data-tab="simulador">Simulador</button>
   <button data-tab="historial">Historial</button>
@@ -96,6 +97,28 @@
   <div class="card">
     <h2>Lo que el control usó en su último ciclo</h2>
     <div id="used-by-control" class="kv"></div>
+  </div>
+</section>
+
+<!-- ===================================================== CONTROL -->
+<section id="tab-control" class="tab">
+  <div class="grid-2">
+    <div class="card">
+      <h2>Plan vigente</h2>
+      <div id="ctl-plan" class="kv"></div>
+      <h3>Horario del modo sombra</h3>
+      <div id="ctl-schedule" class="muted"></div>
+    </div>
+    <div class="card">
+      <h2>Última decisión, explicada</h2>
+      <ul id="ctl-reasons" class="reasons"></ul>
+    </div>
+  </div>
+  <div class="card"><h3>Previsión de producción (kWh por franja de 15 min) y franjas planificadas</h3><div class="chart" id="ch-prod"></div></div>
+  <div class="card"><h3>Previsión de demanda (kWh por hora)</h3><div class="chart short" id="ch-dem"></div></div>
+  <div class="card">
+    <h3>Lluvia prevista</h3>
+    <div id="ctl-rain" class="muted"></div>
   </div>
 </section>
 
