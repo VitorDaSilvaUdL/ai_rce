@@ -99,6 +99,22 @@ def test_frozen_series_is_flagged(tmp_path):
     assert st[("t_hot_tank_c", "RCE-a")]["frozen"] is True
 
 
+def test_unit_b_pyrgeometer_is_not_a_measurement(tmp_path):
+    """Single pyrgeometer, on unit A: the _RCEb tags of Pyrgeometer0.csv stay constant (33 W/m2 in the lab files)
+    and must not raise a 'probe does not change' warning nor be listed as a reading."""
+    p = tmp_path / "Pyrgeometer0.csv"
+    body = "".join(f'"E_FIR, neto, [W/m2]_RCEa";"21/10/2026 {h:02d}:{m:02d}:00";{-60 - m / 5:.1f};1;1\r\n'
+                   f'"E_FIR, neto, [W/m2]_RCEb";"21/10/2026 {h:02d}:{m:02d}:00";33;1;1\r\n'
+                   for h in (9, 10) for m in range(0, 60, 5))
+    p.write_bytes((HEADER + body.replace(".", ",")).encode("latin-1"))
+    now = datetime(2026, 10, 21, 11, 0)
+    rs = wincc.read_recent(p, since=now - timedelta(hours=3))
+    st = wincc.series_status(rs, now=now, stale_after=timedelta(minutes=30), frozen_window=timedelta(hours=1))
+    assert ("ir_net_w_m2", "RCE-a") in st and st[("ir_net_w_m2", "RCE-a")]["frozen"] is False
+    assert ("ir_net_w_m2", "RCE-b") not in st
+    assert ("ir_net_w_m2", "RCE-b") not in wincc.latest_values(rs)
+
+
 # ----------------------------------------------------------------------------------------------- labels, folder
 def test_every_canonical_variable_has_a_label_and_unit():
     for var in wincc.CANONICAL.values():

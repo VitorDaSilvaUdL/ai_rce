@@ -154,11 +154,19 @@ def read_folder(folder, since, max_bytes=4_000_000, patterns=ARCHIVES):
     return out
 
 
+# Series that WinCC exports but that are not a measurement: there is a single pyrgeometer, on unit A, and the unit-B
+# pyrgeometer tags stay constant (33 W/m2 in the lab files; dataset glossary and known issues). Not shown as readings
+# nor checked for frozen probes. The full simulator reads the raw readings and is not affected.
+NOT_MEASURED = {("ir_net_w_m2", "RCE-b")}
+
+
 def latest_values(readings):
-    """{(variable, system): last Reading} (by timestamp)."""
+    """{(variable, system): last Reading} (by timestamp), without the NOT_MEASURED series."""
     latest = {}
     for r in readings:
         key = (r.variable, r.system)
+        if key in NOT_MEASURED:
+            continue
         if key not in latest or r.ts >= latest[key].ts:
             latest[key] = r
     return latest
@@ -172,7 +180,8 @@ def series_status(readings, now, stale_after=timedelta(minutes=30), frozen_windo
     over frozen_window with at least 3 samples), last_invalid (Validity != 1 in the last reading)."""
     by_key = defaultdict(list)
     for r in readings:
-        by_key[(r.variable, r.system)].append(r)
+        if (r.variable, r.system) not in NOT_MEASURED:
+            by_key[(r.variable, r.system)].append(r)
     status = {}
     for key, rs in by_key.items():
         rs.sort(key=lambda r: r.ts)

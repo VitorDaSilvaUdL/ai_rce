@@ -19,7 +19,8 @@ def night_readings(start=T0, hours=2, flow=3.0, t_in=12.0, t_out=10.0):
     while t < start + timedelta(hours=hours):
         out += [mk(t, "flow_rce_l_min", flow), mk(t, "t_circuit_2_c", t_in), mk(t, "t_circuit_4_c", t_out),
                 mk(t, "t_cold_tank_c", 14 - (t - start).total_seconds() / 3600), mk(t, "t_hot_tank_c", 40.0),
-                mk(t, "t_ambient_c", 9.0), mk(t, "ir_net_w_m2", -70.0, "RCE-b"), mk(t, "wind_speed_m_s", 1.0),
+                mk(t, "t_ambient_c", 9.0), mk(t, "ir_net_w_m2", -70.0, "RCE-a"), mk(t, "wind_speed_m_s", 1.0),
+                mk(t, "ir_net_w_m2", 33.0, "RCE-b"),          # unit-B pyrgeometer tags: constant, not a measurement
                 mk(t, "rh_ambient_pct", 60.0), mk(t, "solar_global_w_m2", 0.0)]
         t += timedelta(minutes=5)
     return out

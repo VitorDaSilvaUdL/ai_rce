@@ -20,7 +20,7 @@ NIGHT_START_HOUR = 21
 
 VARS = {"flow_l_min": ("flow_rce_l_min", "RCE-a"), "t_in_c": ("t_circuit_2_c", "RCE-a"), "t_out_c": ("t_circuit_4_c", "RCE-a"),
         "t_cold_tank_c": ("t_cold_tank_c", "RCE-a"), "t_hot_tank_c": ("t_hot_tank_c", "RCE-a"),
-        "t_ambient_c": ("t_ambient_c", "RCE-a"), "ir_net_w_m2": ("ir_net_w_m2", "RCE-b"),
+        "t_ambient_c": ("t_ambient_c", "RCE-a"), "ir_net_w_m2": ("ir_net_w_m2", "RCE-a"),   # single pyrgeometer, on unit A
         "solar_global_w_m2": ("solar_global_w_m2", "RCE-a"), "wind_speed_m_s": ("wind_speed_m_s", "RCE-a"),
         "rh_ambient_pct": ("rh_ambient_pct", "RCE-a")}
 CONTEXT = ["cover", "cover_measured", "plc_mode", "execution", "trial_id", "operation"]
