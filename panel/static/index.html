@@ -183,6 +183,57 @@
       <div class="muted" id="sim-schedule"></div>
     </div>
   </div>
+
+  <div class="grid-2">
+    <div class="card">
+      <h2>¿Qué haría? <span class="tag">nivel completo</span></h2>
+      <p class="muted">Pide la previsión al modelo (como hace el control cada día), calcula el plan y decide con los valores que pongas. Tarda unos segundos. La previsión meteorológica es la de hoy.</p>
+      <form id="simf-form" class="form">
+        <label>Fecha y hora <input type="datetime-local" id="simf-now"></label>
+        <div class="grid-2">
+          <label>Depósito frío T9 (°C) <input type="number" step="0.1" id="simf-cold"></label>
+          <label>Depósito caliente T6 (°C) <input type="number" step="0.1" id="simf-hot"></label>
+          <label>Infrarrojo neto (W/m²) <input type="number" step="1" id="simf-ir"></label>
+          <label>Irradiancia solar (W/m²) <input type="number" step="1" id="simf-solar"></label>
+          <label>Viento (m/s) <input type="number" step="0.1" id="simf-wind"></label>
+          <label>Demanda pendiente (kWh, vacío = la del plan) <input type="number" step="0.1" id="simf-demand"></label>
+        </div>
+        <label>Estado actual del RCE
+          <select id="simf-state">
+            <option value="Parada">Parada</option><option value="ColdMode1">Modo frío</option>
+            <option value="HeatMode1">Modo calor</option><option value="AutomaticMode">Automático</option>
+          </select></label>
+        <label class="switch"><input type="checkbox" id="simf-alarm"> <span>Alarma de lluvia o viento activa</span></label>
+        <div class="row"><button class="btn ok" type="submit">Calcular con el modelo</button><button class="btn" type="button" id="simf-fill">Rellenar con las lecturas actuales</button></div>
+      </form>
+    </div>
+    <div class="card" id="simf-result" hidden>
+      <h2>Resultado con el modelo</h2>
+      <div class="rce-state">
+        <div class="big" id="simf-mode"><span class="ico"></span><span></span></div>
+        <div class="big" id="simf-cover"><span class="ico"></span><span></span></div>
+      </div>
+      <div class="actuators" id="simf-pumps"></div>
+      <div id="simf-plan" class="kv"></div>
+      <ul id="simf-reasons" class="reasons"></ul>
+      <div class="muted" id="simf-note"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Reproducir un día <span class="tag">96 ciclos</span></h2>
+    <p class="muted">Qué habría decidido el control, ciclo a ciclo, con las lecturas de ese día (solo días que estén en los ficheros de WinCC del PC). La previsión meteorológica es la de hoy.</p>
+    <form id="replay-form" class="form row">
+      <label>Día <input type="date" id="replay-date" required></label>
+      <label>Estado a las 00:00 <select id="replay-state"><option value="Parada">Parada</option><option value="ColdMode1">Modo frío</option><option value="HeatMode1">Modo calor</option></select></label>
+      <button class="btn ok" type="submit">Reproducir</button>
+      <span class="muted" id="replay-info"></span>
+    </form>
+    <div id="replay-result" hidden>
+      <div class="chart short" id="ch-replay"></div>
+      <table class="table" id="replay-table"><thead><tr><th>Hora</th><th>Plan</th><th>Franja</th><th>COP</th><th>IA</th><th>Estado</th><th>Tapa</th><th>Demanda (kWh)</th><th>Motivo</th></tr></thead><tbody></tbody></table>
+    </div>
+  </div>
 </section>
 
 <!-- ===================================================== HISTORIAL -->

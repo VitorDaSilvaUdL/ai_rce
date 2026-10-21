@@ -85,7 +85,11 @@
     if (name === "historial") loadHistory();
     if (name === "diario") loadDiary();
     if (name === "ajustes") loadSettings();
-    if (name === "simulador" && !$("#sim-now").value) $("#sim-now").value = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    if (name === "simulador") {
+      if (!$("#sim-now").value) $("#sim-now").value = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+      if (!$("#simf-cold").value) fillSimFromStatus();
+      if (!$("#replay-date").value) $("#replay-date").value = new Date(Date.now() - 86400000 - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+    }
   }
 
   // ------------------------------------------------------------------ status (Inicio + top bar)
@@ -255,6 +259,51 @@
     actuators(r.pumps, $("#sim-pumps"));
     $("#sim-reasons").innerHTML = r.reasons.map((x) => `<li>${esc(x)}</li>`).join("");
     $("#sim-schedule").textContent = `Horario usado: calor ${r.schedule.heat_start.slice(0, 5)}–${r.schedule.heat_end.slice(0, 5)}, parada hasta ${r.schedule.parada_end.slice(0, 5)}, el resto frío; fines de semana parada. Franja de la hora elegida: ${r.slot}.`;
+  });
+
+  // ------------------------------------------------------------------ Simulador completo y reproducción
+  function fillSimFromStatus() {
+    if (!status) return;
+    const get = (v) => { const r = status.readings.find((x) => x.variable === v); return r && r.value != null ? r.value : ""; };
+    $("#simf-cold").value = get("t_cold_tank_c"); $("#simf-hot").value = get("t_hot_tank_c"); $("#simf-ir").value = get("ir_net_w_m2");
+    $("#simf-solar").value = get("solar_global_w_m2"); $("#simf-wind").value = get("wind_speed_m_s");
+    const st = status.control && status.control.plc_state; if (st && $(`#simf-state option[value=${st}]`)) $("#simf-state").value = st;
+    if (!$("#simf-now").value) $("#simf-now").value = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  }
+  $("#simf-fill").addEventListener("click", fillSimFromStatus);
+  $("#simf-form").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const num = (id) => { const v = $(id).value; return v === "" ? null : Number(v); };
+    const body = {now: $("#simf-now").value || null, state: $("#simf-state").value, alarm: $("#simf-alarm").checked,
+      overrides: {cold: num("#simf-cold"), hot: num("#simf-hot"), ir_rad_w_m2: num("#simf-ir"), solar_rad_w_m2: num("#simf-solar"), wind_vel_m_s: num("#simf-wind")},
+      demand_kwh: num("#simf-demand")};
+    toast("Pidiendo la previsión al modelo…");
+    let r; try { r = await post("/api/simulate_full", body); } catch (e) { return; }
+    $("#simf-result").hidden = false;
+    const sm = $("#simf-mode"); sm.className = "big " + r.plc_mode; $(".ico", sm).textContent = MODE_ICO[r.plc_mode] || "?"; $("span:last-child", sm).textContent = (MODE_ES[r.plc_mode] || r.plc_mode) + (r.changed ? " (cambia)" : " (se mantiene)");
+    const sc = $("#simf-cover"); sc.className = "big " + r.cover; $(".ico", sc).textContent = COVER_ICO[r.cover] || "?"; $("span:last-child", sc).textContent = COVER_ES[r.cover] || r.cover;
+    actuators(r.pumps, $("#simf-pumps"));
+    const d = r.decision, f = r.forecast, p = r.plan;
+    $("#simf-plan").innerHTML = [
+      ["Respuesta de la IA", {si: "sí (cambiar de modo)", no: "no (mantener)", parada: "parada"}[d.label] || d.label],
+      ["Plan activo", `${p.kind === "hot" ? "calor" : "frío"} · ventana ${fmtTs(p.window[0])} → ${fmtTs(p.window[1])}`],
+      ["Demanda del plan", `${fmtNum(p.target_kwh, 2)} kWh · producción prevista ${p.total_kwh === -1 ? "insuficiente" : fmtNum(p.total_kwh, 2) + " kWh"} · ${p.frames_n} franjas`],
+      ["Previsión 24 h", `producción calor ${fmtNum(f.prod_hot_24h_kwh, 2)} kWh, frío ${fmtNum(f.prod_cold_24h_kwh, 2)} kWh · demanda calor ${fmtNum(f.demand_hot_24h_kwh, 2)} kWh, frío ${fmtNum(f.demand_cold_24h_kwh, 2)} kWh`],
+      ["Entradas usadas", Object.entries(r.inputs).map(([k, v]) => `${k} = ${fmtNum(v, 2)}`).join(" · ")],
+    ].map(([k, v]) => `<b>${esc(k)}</b><span>${esc(v)}</span>`).join("");
+    $("#simf-reasons").innerHTML = d.reasons.map((x) => `<li>${esc(x)}</li>`).join("");
+    $("#simf-note").textContent = r.note;
+  });
+  $("#replay-form").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    toast("Reproduciendo el día (tres previsiones del modelo)…");
+    let r; try { r = await post("/api/replay", {date: $("#replay-date").value, state: $("#replay-state").value}); } catch (e) { return; }
+    $("#replay-result").hidden = false;
+    $("#replay-info").textContent = `${r.summary.si} sí · ${r.summary.no} no · ${r.summary.parada} parada · ${r.state_changes} cambios de estado · ${r.predict_calls} previsiones. ${r.note}`;
+    const MC = {parada: 0, hot: 1, cold: 2, automatic: 3};
+    const t0 = Date.parse(r.day + "T00:00:00") / 1000;
+    lineChart("ch-replay", [["Modo (0 parada · 1 calor · 2 frío)", r.steps.map((s) => [s.ts, MC[s.plc_mode] == null ? null : MC[s.plc_mode]]), "#5b6475"], ["Tapa (1 abierta)", r.steps.map((s) => [s.ts, s.cover === "open" ? 1 : 0]), "#1e7a46"], ["IA dice sí", r.steps.map((s) => [s.ts, s.action === "si" ? 3 : null]), "#b42318"]], "", {xr: [t0, t0 + 86400], yr: [-0.2, 3.2], step: true, ticks: [0, 1, 2, 3]});
+    $("#replay-table tbody").innerHTML = r.steps.map((s) => `<tr class="${s.action === "si" ? "hl" : ""}"><td>${esc(s.ts.slice(11))}</td><td>${s.plan === "hot" ? "calor" : "frío"}</td><td>${s.in_frame ? "sí" : "—"}</td><td>${s.cop}</td><td><b>${esc(s.action)}</b></td><td>${esc(STATE_ES[s.next_state] || s.next_state)}</td><td>${esc(COVER_ES[s.cover] || s.cover)}</td><td>${s.demand_kwh}</td><td class="muted">${esc(s.reason)}</td></tr>`).join("");
   });
 
   // ------------------------------------------------------------------ Historial

@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from panel import alerts, dryrun, readers, simulator, wincc
+from panel import alerts, dryrun, readers, simfull, simulator, wincc
 from panel.auth import Lock, People, Sessions
 from panel.config import EXIT_STATES
 from panel.journal import Actions, Diary, DIARY_KINDS
@@ -27,7 +27,7 @@ LOCAL_HOSTS = {"127.0.0.1", "::1", "localhost"}
 class PanelContext:
     def __init__(self, root, state_dir, wincc_dir, dades_path, log_path, heartbeat_path, config, supervisor,
                  mode="shadow", local_hosts=None, service_state=readers.service_state, api_health=readers.api_health,
-                 hostname=None, service_runner=None):
+                 hostname=None, service_runner=None, predict=None):
         self.root = Path(root)
         self.state_dir = Path(state_dir)
         self.wincc_dir = Path(wincc_dir)
@@ -42,6 +42,7 @@ class PanelContext:
         self.api_health = api_health
         self.hostname = hostname or socket.gethostname()
         self.service_runner = service_runner or (lambda args: subprocess.run(args, capture_output=True, text=True, timeout=30).returncode)
+        self.predict = predict or self._http_predict
         self.people = People(config.path)
         self.sessions = Sessions()
         self.lock = Lock()
@@ -49,6 +50,14 @@ class PanelContext:
         self.actions = Actions(self.state_dir / "acciones.csv")
         self.set_state_seq = int(state_io.read_control(self.state_dir).get("set_state_seq") or 0)
         self._cache = {}
+
+    def _http_predict(self, samples):
+        """POST the 24-sample window to the prediction API (the same call the control makes)."""
+        import requests
+        url = self.config.get("api_url").rstrip("/") + "/predict"
+        r = requests.post(url, json=samples, headers={"Content-Type": "application/json"}, timeout=90)
+        r.raise_for_status()
+        return r.json()
 
     # --- cached reading of the WinCC archives (re-parsed only when a file grows)
     def readings(self, hours, max_bytes=2_000_000):
@@ -94,6 +103,19 @@ class SimulateRequest(BaseModel):
     state: str
     answer: str
     alarm: bool = False
+
+
+class SimulateFullRequest(BaseModel):
+    now: Optional[str] = None
+    state: str = "Parada"
+    alarm: bool = False
+    overrides: dict = Field(default_factory=dict)
+    demand_kwh: Optional[float] = None
+
+
+class ReplayRequest(BaseModel):
+    date: str
+    state: str = "Parada"
 
 
 class DiaryEntry(BaseModel):
@@ -393,6 +415,45 @@ def create_app(ctx: PanelContext) -> FastAPI:
         status = readers.read_status(ctx.state_dir, datetime.now()) or {}
         schedule = status.get("schedule") or DEFAULT_SCHEDULE
         return simulator.quick(when, body.state, body.answer, body.alarm, schedule)
+
+    @app.post("/api/simulate_full")
+    def post_simulate_full(body: SimulateFullRequest, request: Request):
+        u = require_user(request)
+        now = readers.parse_ts(body.now) or readers.parse_ts((body.now or "") + ":00") if body.now else datetime.now().replace(second=0, microsecond=0)
+        if not now:
+            raise HTTPException(422, "Fecha y hora no válidas (AAAA-MM-DDTHH:MM)")
+        status = readers.read_status(ctx.state_dir, datetime.now()) or {}
+        schedule = status.get("schedule") or DEFAULT_SCHEDULE
+        overrides = {k: float(v) for k, v in body.overrides.items() if k in simfull.SAMPLE_VARS and v not in (None, "")}
+        rs = ctx.readings(hours=24 * 8, max_bytes=20_000_000)
+        t0 = datetime.now()
+        try:
+            result = simfull.simulate(now, rs, overrides, body.state, body.alarm, ctx.predict, schedule,
+                                      demand_j=body.demand_kwh * 3.6e6 if body.demand_kwh is not None else None)
+        except Exception as e:
+            raise HTTPException(503, f"No se ha podido obtener la previsión del modelo: {e}")
+        log_action(u, "simulate_full", duration_s=(datetime.now() - t0).total_seconds())
+        return result
+
+    @app.post("/api/replay")
+    def post_replay(body: ReplayRequest, request: Request):
+        u = require_user(request)
+        try:
+            day = datetime.strptime(body.date, "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(422, "Fecha no válida (AAAA-MM-DD)")
+        status = readers.read_status(ctx.state_dir, datetime.now()) or {}
+        schedule = status.get("schedule") or DEFAULT_SCHEDULE
+        rs = ctx.readings(hours=24 * 8, max_bytes=20_000_000)
+        t0 = datetime.now()
+        try:
+            result = simfull.replay_day(day, rs, body.state, ctx.predict, schedule)
+        except ValueError as e:
+            raise HTTPException(422, str(e))
+        except Exception as e:
+            raise HTTPException(503, f"No se ha podido obtener la previsión del modelo: {e}")
+        log_action(u, f"replay:{body.date}", duration_s=(datetime.now() - t0).total_seconds())
+        return result
 
     # --- diary and actions
     @app.get("/api/diary")

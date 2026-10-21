@@ -36,6 +36,15 @@ class FakeSupervisor:
                 "sc": {"running": self.wanted, "restarts": 0, "last_exit_code": None}, "events": []}
 
 
+def fake_predict(samples):
+    from datetime import timedelta
+    t0 = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    prod = {(t0 + timedelta(minutes=15 * i)).strftime("%Y-%m-%d %H:%M"): 3e5 for i in range(192)}
+    dem = {(t0 + timedelta(hours=i)).isoformat(timespec="seconds"): 1.0e6 for i in range(72)}
+    return {"info": {"demand": {"hot_dem": dem, "cold_dem": dem}, "energy-production": {"hot": prod, "cold": prod},
+                     "rain-prediction": {}}}
+
+
 @pytest.fixture
 def ctx(tmp_path):
     now = datetime.now().replace(second=0, microsecond=0)
@@ -57,7 +66,7 @@ def ctx(tmp_path):
                          log_path=tmp_path / "sc.log", heartbeat_path=tmp_path / "heartbeat_sc.txt",
                          config=Config(state / "panel_config.json"), supervisor=FakeSupervisor(),
                          mode="shadow", local_hosts={"testclient"}, service_state=lambda n: "running",
-                         api_health=lambda: True)
+                         api_health=lambda: True, predict=fake_predict)
     return c
 
 
@@ -227,3 +236,18 @@ def test_history_and_events(client, ctx):
     assert "t_cold_tank_c" in h["series"] and h["series"]["t_cold_tank_c"]["points"][0][1] == 12.5
     r = client.get("/api/readings?hours=6")
     assert r.status_code == 200 and any(x["variable"] == "t_ambient_c" for x in r.json()["readings"])
+
+
+def test_simulate_full_and_replay(client):
+    login(client)
+    r = client.post("/api/simulate_full", json={"state": "Parada", "overrides": {"cold": "18.5", "bogus": 1}})
+    assert r.status_code == 200
+    b = r.json()
+    assert b["inputs"]["cold"] == 18.5 and b["decision"]["reasons"] and b["plan"]["kind"] in ("hot", "cold") and b["note"]
+    assert client.post("/api/simulate_full", json={"now": "mal"}).status_code == 422
+    today = datetime.now().strftime("%Y-%m-%d")
+    r = client.post("/api/replay", json={"date": today, "state": "Parada"})
+    assert r.status_code == 200 and len(r.json()["steps"]) == 96 and r.json()["predict_calls"] == 3
+    assert client.post("/api/replay", json={"date": "2020-01-01"}).status_code == 422
+    assert client.post("/api/replay", json={"date": "ayer"}).status_code == 422
+    assert [a["accion"] for a in client.get("/api/actions").json()][-2:] == ["simulate_full", f"replay:{today}"]
