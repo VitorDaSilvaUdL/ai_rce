@@ -10,6 +10,7 @@ from pathlib import Path
 
 import uvicorn
 
+from panel.collector import Collector
 from panel.config import Config
 from panel.readers import api_health
 from panel.supervisor import ManagedProcess, Supervisor
@@ -48,6 +49,10 @@ def build_context():
 def main():
     ctx = build_context()
     app = create_app(ctx)
+    ctx.collector = Collector(state_dir=ctx.state_dir, readings=lambda hours: ctx.readings(hours=hours, max_bytes=8_000_000),
+                              decisions=lambda since: __import__("panel.readers", fromlist=["read_decisions"]).read_decisions(ctx.dades_path, since),
+                              diary=ctx.diary, mode=lambda: ctx.mode, probe=lambda: ctx.probe_cached(55))
+    ctx.collector.run_in_thread()
     if ctx.config.get("autostart"):
         ctx.supervisor.start()
     ctx.supervisor.run_in_thread(interval_s=5)

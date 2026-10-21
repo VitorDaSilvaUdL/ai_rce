@@ -45,7 +45,7 @@ def read_status(state_dir, now):
     return st
 
 
-NUMERIC = {"current_dem_target", "hot_prod", "cold_prod", "hot_dem", "cold_dem"}
+NUMERIC = {"current_dem_target", "hot_prod", "cold_prod", "hot_dem", "cold_dem", "cop", "frame_prod_kwh"}
 INTEGER = {"plc_mode_code", "cover_open", "plc_alarm"}
 
 

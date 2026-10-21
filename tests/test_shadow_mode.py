@@ -117,6 +117,7 @@ def test_state_columns_follow_the_header():
         "execution": "shadow", "plc_state_before": "Parada", "plc_state": "ColdMode1",
         "plc_mode": "cold", "plc_mode_code": 2, "cover": "open", "cover_open": 1, "cover_measured": "",
         "pump_b1": "auto", "pump_b2": "on", "ev1": "on", "ev2": "off", "plc_alarm": 0,
+        "cop": "", "frame_prod_kwh": "", "control_cfg": "",
     }
 
 

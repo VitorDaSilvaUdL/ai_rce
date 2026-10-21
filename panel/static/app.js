@@ -377,17 +377,18 @@
     let rows, acts; try { rows = await api("/api/diary?n=60"); acts = await api("/api/actions?n=40"); } catch (e) { return; }
     const open = rows.slice().reverse().find((r) => r.tipo === "ensayo_inicio" || r.tipo === "ensayo_fin");
     const trial = open && open.tipo === "ensayo_inicio" ? open.ensayo_id : null;
-    $("#trial-tag").textContent = trial ? `en curso: ${trial}` : "ninguno en curso";
+    const OPS = {manual: "manual", automatico_plc: "automático PLC", control_ia: "control IA"};
+    $("#trial-tag").textContent = trial ? `en curso: ${trial} · ${OPS[open.operacion] || open.operacion || "?"}` : "ninguno en curso";
     $("#btn-trial-start").disabled = !!trial; $("#btn-trial-end").disabled = !trial;
     const KIND = {ensayo_inicio: "Inicio de ensayo", ensayo_fin: "Fin de ensayo", incidencia: "Incidencia", nota: "Nota", mando: "Mando manual", modo: "Cambio de modo", sistema: "Sistema"};
-    $("#diary-table tbody").innerHTML = rows.slice().reverse().map((r) => `<tr><td>${esc(fmtTs(r.timestamp))}</td><td>${esc(r.autor)}</td><td>${esc(KIND[r.tipo] || r.tipo)}</td><td>${esc(r.texto)}</td><td class="muted">${esc(r.ensayo_id)}</td></tr>`).join("") || "<tr><td colspan=5 class='muted'>Sin anotaciones</td></tr>";
+    $("#diary-table tbody").innerHTML = rows.slice().reverse().map((r) => `<tr><td>${esc(fmtTs(r.timestamp))}</td><td>${esc(r.autor)}</td><td>${esc(KIND[r.tipo] || r.tipo)}</td><td>${esc(r.texto)}</td><td class="muted">${esc(r.ensayo_id)}${r.operacion ? " · " + esc(OPS[r.operacion] || r.operacion) : ""}</td></tr>`).join("") || "<tr><td colspan=5 class='muted'>Sin anotaciones</td></tr>";
     $("#actions-table tbody").innerHTML = acts.slice().reverse().map((a) => `<tr><td>${esc(fmtTs(a.timestamp))}</td><td>${esc(a.autor)}</td><td>${esc(a.accion)}</td><td>${esc(a.modo)}</td><td>${esc(a.resultado)}</td></tr>`).join("") || "<tr><td colspan=5 class='muted'>Sin acciones</td></tr>";
   }
   $("#trial-form").addEventListener("submit", async (ev) => {
     ev.preventDefault();
     const t9 = $("#trial-t9").value;
     const text = `${$("#trial-type").value}; unidad ${$("#trial-unit").value}${t9 ? `; T9 inicial ${t9} °C` : ""}${$("#trial-notes").value ? "; " + $("#trial-notes").value : ""}`;
-    try { await post("/api/diary", {kind: "ensayo_inicio", text}); toast("Ensayo iniciado", "ok"); loadDiary(); } catch (e) {}
+    try { await post("/api/diary", {kind: "ensayo_inicio", text, operation: $("#trial-op").value}); toast("Ensayo iniciado", "ok"); loadDiary(); } catch (e) {}
   });
   $("#btn-trial-end").addEventListener("click", async () => { try { await post("/api/diary", {kind: "ensayo_fin", text: ""}); toast("Ensayo terminado", "ok"); loadDiary(); } catch (e) {} });
   $("#note-form").addEventListener("submit", async (ev) => {

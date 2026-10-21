@@ -17,7 +17,7 @@ import json
 from panel import alerts, dryrun, plc_ops, readers, simfull, simulator, wincc
 from panel.auth import Lock, People, Sessions
 from panel.config import EXIT_STATES
-from panel.journal import Actions, Diary, DIARY_KINDS
+from panel.journal import Actions, Diary, DIARY_KINDS, OPERATIONS
 from sc import state_io
 from sc.plc_shadow import DEFAULT_SCHEDULE
 
@@ -56,6 +56,7 @@ class PanelContext:
         self.port_users = port_users or plc_ops.port_users
         self.jobs = plc_ops.JobRunner()
         self._probe_cache = (None, None)
+        self.collector = None            # set by panel.main (K1/K2/K3 writers)
         self.people = People(config.path)
         self.sessions = Sessions()
         self.lock = Lock()
@@ -150,6 +151,7 @@ class ReplayRequest(BaseModel):
 class DiaryEntry(BaseModel):
     kind: str
     text: str = ""
+    operation: str = ""
 
 
 class Settings(BaseModel):
@@ -320,7 +322,9 @@ def create_app(ctx: PanelContext) -> FastAPI:
             "control": status, "heartbeat_age_s": hb, "filebeat": fb, "lights": lights,
             "readings": readings, "alerts": [a.as_dict() for a in active],
             "refresh_s": ctx.config.get("refresh_s"), "plc": plc, "job": ctx.jobs.status(),
-            "plc_ip": ctx.plc["ip"],
+            "plc_ip": ctx.plc["ip"], "trial": ctx.diary.open_trial_info(),
+            "collector": ({"last_run": _iso(ctx.collector.last_run), "last_error": ctx.collector.last_error}
+                          if ctx.collector else None),
         }
 
     @app.get("/api/status")
@@ -516,7 +520,16 @@ def create_app(ctx: PanelContext) -> FastAPI:
         u = require_user(request)
         if body.kind not in DIARY_KINDS:
             raise HTTPException(422, "Tipo de anotación desconocido")
-        return ctx.diary.add(author=u["name"], kind=body.kind, text=body.text.strip(), host=u.get("host", ""))
+        if body.operation and body.operation not in OPERATIONS:
+            raise HTTPException(422, "Tipo de operación desconocido")
+        row = ctx.diary.add(author=u["name"], kind=body.kind, text=body.text.strip(), host=u.get("host", ""),
+                            operation=body.operation)
+        if body.kind in ("ensayo_inicio", "ensayo_fin") and ctx.collector is not None:
+            try:
+                ctx.collector.run_once()          # write the trial summary right away
+            except Exception:
+                pass
+        return row
 
     @app.get("/api/actions")
     def get_actions(request: Request, n: int = 50):
@@ -536,7 +549,7 @@ def create_app(ctx: PanelContext) -> FastAPI:
     def get_settings(request: Request):
         require_user(request)
         return {**ctx.config.all(), "people": ctx.people.names(), "mode": ctx.mode, "wincc_dir": str(ctx.wincc_dir),
-                "exit_states": EXIT_STATES, "diary_kinds": DIARY_KINDS, "host": ctx.hostname}
+                "exit_states": EXIT_STATES, "diary_kinds": DIARY_KINDS, "operations": OPERATIONS, "host": ctx.hostname}
 
     @app.post("/api/settings")
     def post_settings(body: Settings, request: Request):

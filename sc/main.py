@@ -28,6 +28,7 @@ from sc import decision
 
 last_decision_row = None  # fila de get_decision() del ciclo en curso (DECISION_HEADER)
 last_decision = None      # decision.Decision del ciclo en curso (motivos para el panel)
+CONTROL_CFG_TAG = cycle_log.control_cfg_tag(FRAME_KEY_FORMAT, NEXT_STATE_POLICY, DEMAND_ADJUST, COP_PUMP_ENERGY_UNITS)
 action = 0                # 0 = no, 1 = si, 2 = parada (última decisión aplicada)
 mode = "parada"           # modo de la última franja activa o leído del PLC al arrancar
 _last_set_state_seq = 0   # último control.json:set_state_seq aplicado (modo sombra)
@@ -594,7 +595,10 @@ def run_cycle(plc, out_path=OUTPUT_CSV_PATH, state_dir=state_io.STATE_DIR):
         cycle_log.write_cycle_row(
             out_path, last_decision_row,
             cycle_log.state_columns(plc.execution, estado_actual, applied_state,
-                                    cover_measured=cover_measured, alarm=plc.alarm_active),
+                                    cover_measured=cover_measured, alarm=plc.alarm_active,
+                                    cop=last_decision.cop if last_decision else None,
+                                    frame_prod_j=last_decision.frame_prod_j if last_decision else None,
+                                    control_cfg=CONTROL_CFG_TAG),
         )
     except Exception:
         logger.exception(f"Error escribiendo {out_path}")

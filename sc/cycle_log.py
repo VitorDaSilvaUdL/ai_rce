@@ -24,6 +24,7 @@ DECISION_HEADER = [
 STATE_HEADER = [
     "execution", "plc_state_before", "plc_state", "plc_mode", "plc_mode_code",
     "cover", "cover_open", "cover_measured", "pump_b1", "pump_b2", "ev1", "ev2", "plc_alarm",
+    "cop", "frame_prod_kwh", "control_cfg",
 ]
 HEADER = DECISION_HEADER + STATE_HEADER
 
@@ -62,7 +63,19 @@ def state_outputs(state, alarm=False):
     }
 
 
-def state_columns(execution, state_before, state, cover_measured="", alarm=False):
+def control_cfg_tag(frame_key_format, next_state_policy, demand_adjust, cop_units):
+    """Short tag of the control version that produced a row: 'fixed' (corrections of 2026-10-21), 'legacy'
+    (campaign 2025 behaviour) or the explicit mix."""
+    cfg = (frame_key_format, next_state_policy, demand_adjust, cop_units)
+    if cfg == ("forecast", "frame_mode", "frame_prod", "J"):
+        return "fixed"
+    if cfg == ("iso", "toggle", "pump_wh", "Wh"):
+        return "legacy"
+    return f"fk={frame_key_format};ns={next_state_policy};da={demand_adjust};cop={cop_units}"
+
+
+def state_columns(execution, state_before, state, cover_measured="", alarm=False, cop=None, frame_prod_j=None,
+                  control_cfg=""):
     """The STATE_HEADER columns for one cycle."""
     out = state_outputs(state, alarm=alarm)
     values = {
@@ -71,6 +84,9 @@ def state_columns(execution, state_before, state, cover_measured="", alarm=False
         "plc_state": state if state is not None else "",
         "cover_measured": cover_measured or "",
         "plc_alarm": 1 if alarm else 0,
+        "cop": round(cop, 2) if cop is not None else "",
+        "frame_prod_kwh": round(frame_prod_j / 3.6e6, 4) if frame_prod_j is not None else "",
+        "control_cfg": control_cfg or "",
         **out,
     }
     return [values[k] for k in STATE_HEADER]
