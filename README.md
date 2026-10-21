@@ -131,6 +131,33 @@ export SC_ENV=test   # o prod
 python -m sc.main
 ```
 
+### Modo sombra
+
+`plc.mode` en `sc/config.<env>.json` (por defecto `"shadow"`): el control lee WinCC, predice y decide cada 15 min,
+pero no se conecta al PLC ni escribe en él; el estado del RCE es virtual (`sc/plc_shadow.py`). Cada ciclo queda en
+`dades.csv` con `execution`, estado, modo y tapa (`sc/cycle_log.py`) y en `state/status.json` (`sc/state_io.py`).
+`plc.mode = "real"` conecta con el PLC (IP, rack y slot de la configuración). Horarios de calor y parada para el modo
+sombra en `plc.shadow.schedule`.
+
+### Panel RCE (página de supervisión y control)
+
+```bash
+export SC_ENV=prod
+python -m panel.main        # http://localhost:8050 (y desde la red del laboratorio)
+```
+
+El panel (`panel/`) arranca y vigila la API y el control (`panel/supervisor.py`), y muestra en el navegador:
+semáforos, estado del RCE, última decisión, avisos con qué hacer, lecturas de WinCC, historial, mandos manuales en
+seco (`panel/dryrun.py`: la secuencia exacta de escrituras que haría el PLC, simulada), simulador rápido
+(`panel/simulator.py`), diario de campaña (`state/diario.csv`) y ajustes. Se entra con nombre y PIN; los mandos exigen
+«Tomar el mando» (una sola persona a la vez). Especificación: `rce_review/panel_rce/ESPECIFICACION_panel_rce.md` del
+repositorio de trabajo. Instalación en el PC del laboratorio: `deploy/install_shadow_lab.ps1` (ai_rce en sombra) y
+después `deploy/install_panel.ps1` (tarea programada `RCE-Panel`, puerto 8050, acceso directo «Panel RCE»).
+
+Variables de entorno útiles: `SC_CONFIG` (ruta a un JSON de configuración distinto de `sc/config.<env>.json`),
+`PANEL_WORK_DIR` (carpeta para `state/`, registros y `sc.log` fuera del repositorio, para pruebas),
+`SC_SMTP_PASSWORD` / `GMAIL_APP_PASSWORD` o `sc/secrets.local.json` (contraseñas; `sc/credentials.py`).
+
 ---
 
 ## Configuración

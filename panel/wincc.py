@@ -164,9 +164,12 @@ def latest_values(readings):
     return latest
 
 
+FROZEN_PREFIXES = ("t_", "rh_", "ir_")   # a constant 0 is normal for solar at night, flow, wind or energy counters
+
+
 def series_status(readings, now, stale_after=timedelta(minutes=30), frozen_window=timedelta(hours=1)):
-    """Per series: last reading, stale (no reading for stale_after), frozen (constant over frozen_window with
-    at least 3 samples), last_invalid (Validity != 1 in the last reading)."""
+    """Per series: last reading, stale (no reading for stale_after), frozen (temperature, humidity or IR constant
+    over frozen_window with at least 3 samples), last_invalid (Validity != 1 in the last reading)."""
     by_key = defaultdict(list)
     for r in readings:
         by_key[(r.variable, r.system)].append(r)
@@ -175,7 +178,7 @@ def series_status(readings, now, stale_after=timedelta(minutes=30), frozen_windo
         rs.sort(key=lambda r: r.ts)
         last = rs[-1]
         window = [r for r in rs if r.ts >= now - frozen_window and r.value is not None]
-        frozen = len(window) >= 3 and len({r.value for r in window}) == 1
+        frozen = (key[0].startswith(FROZEN_PREFIXES) and len(window) >= 3 and len({r.value for r in window}) == 1)
         status[key] = {
             "last": last, "age_s": (now - last.ts).total_seconds(),
             "stale": now - last.ts > stale_after, "frozen": frozen, "last_invalid": not last.valid,

@@ -366,8 +366,9 @@ def create_app(ctx: PanelContext) -> FastAPI:
             ctx.set_state_seq += 1
             state_io.write_control(ctx.state_dir, set_state=result["state_after"], set_state_seq=ctx.set_state_seq)
             result["applied"] = True
+            cover_es = {"open": "abierta", "closed": "cerrada"}.get(result["cover_after"], result["cover_after"])
             ctx.diary.add(author=u["name"], kind="mando", host=u.get("host", ""),
-                          text=f"{result['label']} (simulado): estado virtual {state} → {result['state_after']}, tapa {result['cover_after']}")
+                          text=f"{result['label']} (simulado): estado virtual {state} → {result['state_after']}, tapa {cover_es}")
         log_action(u, f"dryrun:{body.command}", result="aborted" if result["aborted"] else "ok",
                    duration_s=(datetime.now() - t0).total_seconds())
         return result

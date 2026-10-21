@@ -75,6 +75,7 @@ def test_tail_log_and_plain_language_events(tmp_path):
 def test_service_state_parses_sc_query_output():
     assert readers.service_state("filebeat", runner=lambda a: (0, "SERVICE_NAME: filebeat\n        STATE              : 4  RUNNING\n")) == "running"
     assert readers.service_state("filebeat", runner=lambda a: (0, "        STATE              : 1  STOPPED\n")) == "stopped"
+    assert readers.service_state("filebeat", runner=lambda a: (0, "NOMBRE_SERVICIO: filebeat\n        ESTADO             : 4  RUNNING \n")) == "running"
     assert readers.service_state("filebeat", runner=lambda a: (1060, "The specified service does not exist")) == "missing"
     assert readers.service_state("filebeat", runner=lambda a: (None, "")) == "unknown"
 

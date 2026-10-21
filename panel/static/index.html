@@ -4,10 +4,276 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Panel RCE</title>
+<link rel="stylesheet" href="/static/uplot.min.css">
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-<div id="app">Panel RCE: cargando…</div>
+
+<header class="top">
+  <div class="brand">Panel RCE</div>
+  <div id="mode-badge" class="badge mode">…</div>
+  <div class="top-info">
+    <span id="top-wincc" title="Última escritura de WinCC">WinCC: —</span>
+    <span id="top-cycle" title="Siguiente decisión del control">Siguiente ciclo: —</span>
+  </div>
+  <div class="top-user">
+    <span id="lock-chip" class="chip" title="Quién tiene el mando">Nadie al mando</span>
+    <button id="btn-lock" class="btn small">Tomar el mando</button>
+    <span id="user-chip" class="chip user">—</span>
+    <button id="btn-logout" class="btn small ghost">Salir</button>
+  </div>
+</header>
+
+<nav class="tabs" id="tabs">
+  <button data-tab="inicio" class="active">Inicio</button>
+  <button data-tab="lecturas">Lecturas</button>
+  <button data-tab="mandos">Mandos</button>
+  <button data-tab="simulador">Simulador</button>
+  <button data-tab="historial">Historial</button>
+  <button data-tab="diario">Diario</button>
+  <button data-tab="ajustes">Ajustes</button>
+</nav>
+
+<main>
+
+<!-- ===================================================== INICIO -->
+<section id="tab-inicio" class="tab active">
+  <div class="lights" id="lights">
+    <div class="light" data-k="wincc"><div class="dot"></div><div class="lt">Datos WinCC</div><div class="ls">—</div></div>
+    <div class="light" data-k="api"><div class="dot"></div><div class="lt">Predicción</div><div class="ls">—</div></div>
+    <div class="light" data-k="sc"><div class="dot"></div><div class="lt">Control</div><div class="ls">—</div></div>
+    <div class="light" data-k="filebeat"><div class="dot"></div><div class="lt">Envío a Kibana</div><div class="ls">—</div></div>
+  </div>
+
+  <div class="grid-2">
+    <div class="card">
+      <h2>Estado del RCE <span id="state-tag" class="tag"></span></h2>
+      <div class="rce-state">
+        <div class="big" id="st-mode"><span class="ico">⏸</span><span>—</span></div>
+        <div class="big" id="st-cover"><span class="ico">▭</span><span>Tapa —</span></div>
+      </div>
+      <div class="actuators" id="st-pumps"></div>
+      <div class="muted" id="st-since"></div>
+    </div>
+    <div class="card">
+      <h2>Última decisión</h2>
+      <div id="decision" class="decision">—</div>
+      <div id="plan" class="muted"></div>
+    </div>
+  </div>
+
+  <div class="card actions">
+    <button id="btn-start" class="btn huge ok">▶ Arrancar</button>
+    <button id="btn-stop" class="btn huge danger">■ Parar</button>
+    <button id="btn-restart" class="btn huge">↻ Reiniciar</button>
+    <div class="muted" id="sup-info"></div>
+  </div>
+
+  <div class="card">
+    <h2>Qué hacer ahora</h2>
+    <ul id="alerts" class="alerts"><li class="ok">Todo en orden</li></ul>
+  </div>
+
+  <div class="card">
+    <h2>Lecturas principales</h2>
+    <div id="main-readings" class="readings-grid"></div>
+  </div>
+</section>
+
+<!-- ===================================================== LECTURAS -->
+<section id="tab-lecturas" class="tab">
+  <div class="toolbar">
+    <label>Últimas <select id="lect-hours"><option value="3">3 h</option><option value="6" selected>6 h</option><option value="12">12 h</option><option value="24">24 h</option></select></label>
+    <button id="btn-lect-refresh" class="btn small">Actualizar</button>
+    <span class="muted" id="lect-info"></span>
+  </div>
+  <div class="card">
+    <table class="table" id="lect-table">
+      <thead><tr><th>Variable</th><th>Valor</th><th>Hora</th><th>Unidad</th><th>Tendencia</th><th>Estado</th><th>Origen</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+  <div class="card">
+    <h2>Lo que el control usó en su último ciclo</h2>
+    <div id="used-by-control" class="kv"></div>
+  </div>
+</section>
+
+<!-- ===================================================== MANDOS -->
+<section id="tab-mandos" class="tab">
+  <div class="card watermark" data-wm="SIMULADO">
+    <h2>Mandos manuales <span id="mandos-mode" class="tag"></span></h2>
+    <p class="muted" id="mandos-help">En modo SOMBRA los mandos se ejecutan en seco: se muestra la secuencia exacta de escrituras que se harían en el PLC y, si lo marcas, se aplica el resultado al estado virtual del control. No se toca el PLC.</p>
+    <ul class="checklist" id="mandos-check"></ul>
+    <div class="row">
+      <label class="switch"><input type="checkbox" id="chk-pause"> <span>Control automático en pausa</span></label>
+      <label class="switch"><input type="checkbox" id="chk-apply" checked> <span>Aplicar el resultado al estado virtual</span></label>
+      <label class="switch"><input type="checkbox" id="chk-alarm"> <span>Simular alarma de lluvia o viento</span></label>
+    </div>
+    <div class="cmd-grid">
+      <button class="btn cmd" data-cmd="cold">❄ Modo frío</button>
+      <button class="btn cmd" data-cmd="heat">☀ Modo calor</button>
+      <button class="btn cmd" data-cmd="parada">⏸ Parada</button>
+      <button class="btn cmd" data-cmd="automatic">A Automático</button>
+      <button class="btn cmd" data-cmd="open_cover">▲ Abrir tapa</button>
+      <button class="btn cmd" data-cmd="close_cover">▼ Cerrar tapa</button>
+      <button class="btn cmd" data-cmd="test_cover">⇅ Prueba de tapa</button>
+    </div>
+  </div>
+  <div class="card" id="dryrun-result" hidden>
+    <h2 id="dr-title">Resultado</h2>
+    <div id="dr-summary" class="dr-summary"></div>
+    <ol id="dr-steps" class="steps"></ol>
+  </div>
+</section>
+
+<!-- ===================================================== SIMULADOR -->
+<section id="tab-simulador" class="tab">
+  <div class="grid-2">
+    <div class="card">
+      <h2>¿Qué haría? <span class="tag">nivel rápido</span></h2>
+      <p class="muted">La máquina de estados del control con la respuesta que elijas para la IA. El nivel completo (con el modelo de predicción) llega en la fase 2.</p>
+      <form id="sim-form" class="form">
+        <label>Fecha y hora <input type="datetime-local" id="sim-now" required></label>
+        <label>Estado actual del RCE
+          <select id="sim-state">
+            <option value="Parada">Parada</option><option value="ColdMode1">Modo frío</option>
+            <option value="HeatMode1">Modo calor</option><option value="AutomaticMode">Automático</option>
+          </select></label>
+        <fieldset><legend>Respuesta de la IA</legend>
+          <label><input type="radio" name="sim-answer" value="si" checked> Sí (cambiar)</label>
+          <label><input type="radio" name="sim-answer" value="no"> No (mantener)</label>
+          <label><input type="radio" name="sim-answer" value="parada"> Parada</label>
+        </fieldset>
+        <label class="switch"><input type="checkbox" id="sim-alarm"> <span>Alarma de lluvia o viento activa</span></label>
+        <button class="btn ok" type="submit">Calcular</button>
+      </form>
+    </div>
+    <div class="card" id="sim-result" hidden>
+      <h2>Resultado</h2>
+      <div class="rce-state">
+        <div class="big" id="sim-mode"><span class="ico"></span><span></span></div>
+        <div class="big" id="sim-cover"><span class="ico"></span><span></span></div>
+      </div>
+      <div class="actuators" id="sim-pumps"></div>
+      <ul id="sim-reasons" class="reasons"></ul>
+      <div class="muted" id="sim-schedule"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================================================== HISTORIAL -->
+<section id="tab-historial" class="tab">
+  <div class="toolbar">
+    <div class="seg" id="hist-range">
+      <button data-h="12">12 h</button><button data-h="24" class="active">24 h</button><button data-h="72">3 días</button><button data-h="168">7 días</button>
+    </div>
+    <button id="btn-hist-refresh" class="btn small">Actualizar</button>
+    <a id="kibana-link" class="btn small ghost" href="https://spoofing-gcd.udl.cat:5601/app/dashboards#/view/rce-cold-campaign" target="_blank" rel="noopener">Abrir Kibana</a>
+    <span class="muted" id="hist-info"></span>
+  </div>
+  <div class="card"><h3>Depósitos y circuito (°C)</h3><div class="chart" id="ch-tanks"></div></div>
+  <div class="card"><h3>Modo del RCE por ciclo (0 parada · 1 calor · 2 frío · 3 automático) — real y sombra</h3><div class="chart short" id="ch-mode"></div></div>
+  <div class="card"><h3>Tapa (1 abierta · 0 cerrada) — real y sombra</h3><div class="chart short" id="ch-cover"></div></div>
+  <div class="grid-2">
+    <div class="card"><h3>Caudal (L/min)</h3><div class="chart short" id="ch-flow"></div></div>
+    <div class="card"><h3>Infrarrojo neto y solar (W/m²)</h3><div class="chart short" id="ch-rad"></div></div>
+  </div>
+  <div class="card"><h3>Aire exterior (°C), humedad (%) y viento (m/s)</h3><div class="chart short" id="ch-amb"></div></div>
+  <div class="card">
+    <h3>Qué ha pasado</h3>
+    <ul id="events" class="events"></ul>
+  </div>
+</section>
+
+<!-- ===================================================== DIARIO -->
+<section id="tab-diario" class="tab">
+  <div class="grid-2">
+    <div class="card">
+      <h2>Ensayo <span id="trial-tag" class="tag"></span></h2>
+      <form id="trial-form" class="form">
+        <label>Tipo de ensayo
+          <select id="trial-type">
+            <option>Sin control de temperatura inicial</option><option>Temperatura inicial fijada</option>
+            <option>Temperatura del depósito mantenida constante</option><option>Agua estancada en el RCE</option>
+            <option>Producción de frío nocturna</option><option>Producción de calor diurna</option>
+          </select></label>
+        <label>T depósito frío inicial (°C) <input type="number" step="0.1" id="trial-t9"></label>
+        <label>Unidad <select id="trial-unit"><option>A</option><option>B</option><option>A y B</option></select></label>
+        <label>Notas <input type="text" id="trial-notes" placeholder="opcional"></label>
+        <div class="row">
+          <button class="btn ok" type="submit" id="btn-trial-start">Iniciar ensayo</button>
+          <button class="btn" type="button" id="btn-trial-end">Terminar ensayo</button>
+        </div>
+      </form>
+    </div>
+    <div class="card">
+      <h2>Anotar</h2>
+      <form id="note-form" class="form">
+        <label>Tipo <select id="note-kind"><option value="incidencia">Incidencia</option><option value="nota">Nota</option></select></label>
+        <label>Categoría <select id="note-cat"><option>Sensor</option><option>Tapa</option><option>Bomba o válvula</option><option>Meteorología</option><option>Otro</option></select></label>
+        <label>Texto <textarea id="note-text" rows="3" required></textarea></label>
+        <button class="btn ok" type="submit">Guardar</button>
+      </form>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Últimas anotaciones</h2>
+    <table class="table" id="diary-table"><thead><tr><th>Cuándo</th><th>Quién</th><th>Tipo</th><th>Texto</th><th>Ensayo</th></tr></thead><tbody></tbody></table>
+  </div>
+  <div class="card">
+    <h2>Últimas acciones en el panel</h2>
+    <table class="table" id="actions-table"><thead><tr><th>Cuándo</th><th>Quién</th><th>Acción</th><th>Modo</th><th>Resultado</th></tr></thead><tbody></tbody></table>
+  </div>
+</section>
+
+<!-- ===================================================== AJUSTES -->
+<section id="tab-ajustes" class="tab">
+  <div class="grid-2">
+    <div class="card">
+      <h2>Modo de ejecución</h2>
+      <div class="row"><span id="set-mode" class="badge mode">—</span></div>
+      <p class="muted">El modo REAL (el control escribe en el PLC) se activa en la fase 3, con autorización del equipo y doble confirmación.</p>
+      <button class="btn" id="btn-mode-real" disabled>Activar REAL (fase 3)</button>
+      <h3>Al volver a SOMBRA, dejar el PLC en</h3>
+      <select id="set-exit"></select>
+      <h3>Otros</h3>
+      <div class="row"><label class="switch"><input type="checkbox" id="set-autostart"> <span>Arrancar el control al encender el PC</span></label></div>
+      <div class="row"><label>Refresco de la pantalla (s) <input type="number" id="set-refresh" min="3" max="120" style="width:80px;margin-left:8px"></label></div>
+      <div class="row"><button class="btn ok" id="btn-settings-save">Guardar ajustes</button></div>
+    </div>
+    <div class="card">
+      <h2>Personas</h2>
+      <ul id="people" class="people"></ul>
+      <form id="people-form" class="form row">
+        <input type="text" id="p-name" placeholder="Nombre" required>
+        <input type="password" id="p-pin" placeholder="PIN (cifras)" pattern="[0-9]{4,12}" required>
+        <button class="btn" type="submit">Añadir o cambiar PIN</button>
+      </form>
+      <h2>Información</h2>
+      <div id="info" class="kv"></div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<!-- ===================================================== LOGIN -->
+<div id="login" class="overlay" hidden>
+  <div class="dialog">
+    <h1>Panel RCE</h1>
+    <form id="login-form" class="form">
+      <p id="login-msg" class="muted">Entra con tu nombre y tu PIN.</p>
+      <label>Nombre <input type="text" id="login-name" autocomplete="username" required></label>
+      <label>PIN <input type="password" id="login-pin" inputmode="numeric" autocomplete="current-password" required></label>
+      <button class="btn ok huge" type="submit" id="login-btn">Entrar</button>
+      <div id="login-error" class="error"></div>
+    </form>
+  </div>
+</div>
+
+<div id="toast" class="toast" hidden></div>
+
 <script src="/static/uplot.iife.min.js"></script>
 <script src="/static/app.js"></script>
 </body>

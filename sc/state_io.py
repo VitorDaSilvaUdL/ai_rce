@@ -10,7 +10,7 @@ import os
 import tempfile
 from pathlib import Path
 
-STATE_DIR = Path(__file__).resolve().parent.parent / "state"
+STATE_DIR = Path(os.getenv("SC_STATE_DIR") or Path(__file__).resolve().parent.parent / "state")
 STATUS_NAME = "status.json"
 CONTROL_NAME = "control.json"
 

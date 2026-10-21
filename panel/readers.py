@@ -111,6 +111,21 @@ EVENT_PATTERNS = [
     (re.compile(r"RCE \(SOMBRA\) - la IA cambiaría de estado: (\w+) -> (\w+)"),
      lambda m: f"Sombra: la IA cambiaría de {STATE_ES.get(m.group(1), m.group(1))} a {STATE_ES.get(m.group(2), m.group(2))}"),
     (re.compile(r"Sistema iniciado"), lambda m: "Control arrancado"),
+    (re.compile(r"Planificaci[oó]n? inicial de la demanda de (calor|frio)"), lambda m: f"Planificación inicial de la demanda de {'frío' if m.group(1) == 'frio' else 'calor'}"),
+    (re.compile(r"Ventana de planificaci[oó]n (calor|frio): (\S+) <-> (\S+)"),
+     lambda m: f"Ventana de planificación de {'frío' if m.group(1) == 'frio' else 'calor'}: de {m.group(2)[:16].replace('T', ' ')} a {m.group(3)[:16].replace('T', ' ')}"),
+    (re.compile(r"Demanda total calculada para el intervalo: ([\d.]+)"), lambda m: f"Demanda prevista en la ventana: {float(m.group(1)) / 3.6e6:.1f} kWh"),
+    (re.compile(r"Mode establert a (\w+)\. Demanda \w+ objectiu: ([\d.,]+) J.*Producció prevista: ([\d.,]+) J"),
+     lambda m: f"Plan de {'calor' if m.group(1).upper() == 'HOT' else 'frío'}: demanda objetivo {float(m.group(2).replace(',', '')) / 3.6e6:.1f} kWh, producción prevista {float(m.group(3).replace(',', '')) / 3.6e6:.1f} kWh"),
+    (re.compile(r"Franges hor[àa]ries seleccionades per a (\w+): \[(.*)\]"),
+     lambda m: f"Franjas elegidas para {'calor' if m.group(1).upper() == 'HOT' else 'frío'}: {m.group(2).count(chr(39)) // 2} tramos"),
+    (re.compile(r"Franges horaries seleccionadas per al mode COLD.*: \[(.*)\]"), lambda m: f"Franjas de frío (solo información): {m.group(1).count(chr(39)) // 2} tramos"),
+    (re.compile(r"Demanda de frio estimada para el periodo: ([\d.,]+) J"), lambda m: f"Demanda de frío prevista: {float(m.group(1).replace(',', '')) / 3.6e6:.1f} kWh"),
+    (re.compile(r"Energia total prevista para cubrir la demanda de frio: ([\d.,]+) J"), lambda m: f"Producción de frío prevista: {float(m.group(1).replace(',', '')) / 3.6e6:.1f} kWh"),
+    (re.compile(r"No hay demanda de frio"), lambda m: "No hay demanda de frío en los próximos días"),
+    (re.compile(r"No se ha podido encontrar un plan optimo para la demanda de frio"), lambda m: "No se ha encontrado un plan que cubra la demanda de frío"),
+    (re.compile(r"Planificant demanda de calor"), lambda m: "Planificando la demanda de calor (7:00)"),
+    (re.compile(r"Iniciant actualització diària de prediccions"), lambda m: "Actualización diaria de previsiones (0:00)"),
     (re.compile(r"Modo actual PLC: (\w+)"), lambda m: f"Modo leído al arrancar: {m.group(1)}"),
     (re.compile(r"Error escrivint|Error escribiendo"), lambda m: "Error al escribir un fichero de registro"),
 ]
@@ -165,7 +180,7 @@ def service_state(name, runner=_run_sc_query):
         return "unknown"
     if code == 1060 or "does not exist" in out or "no existe" in out:
         return "missing"
-    m = re.search(r"STATE\s*:\s*\d+\s+(\w+)", out)
+    m = re.search(r"(?:STATE|ESTADO)\s*:\s*\d+\s+(\w+)", out)      # English or Spanish Windows
     if not m:
         return "unknown"
     return "running" if m.group(1) == "RUNNING" else "stopped"
