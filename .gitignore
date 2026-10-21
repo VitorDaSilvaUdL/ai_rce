@@ -210,3 +210,6 @@ sc/config.local.json
 
 # Credenciales locales (ver sc/credentials.py)
 secrets.local.json
+
+# Estado local del panel y del control (status.json, control.json, diario, acciones, config del panel)
+state/

@@ -23,8 +23,10 @@ from sc.config import (
 )
 from sc.plc_shadow import make_plc
 from sc import cycle_log
+from sc import state_io
 
 last_decision_row = None  # fila de get_decision() del ciclo en curso (DECISION_HEADER)
+_last_set_state_seq = 0   # último control.json:set_state_seq aplicado (modo sombra)
 
 # logger.setLevel(logging.DEBUG)
 
@@ -558,9 +560,62 @@ mode_actions = {
     "automatic": plc.set_automatic_mode,
 }
 
-def run_cycle(plc, out_path=OUTPUT_CSV_PATH):
+def _last_sample(data):
+    """Última muestra numérica de system_data['data'] (lo que el control ha leído de WinCC)."""
+    try:
+        last = data["data"][-1]
+    except (KeyError, IndexError, TypeError):
+        return {}
+    return {k: v for k, v in last.items() if isinstance(v, (int, float)) and not isinstance(v, bool)}
+
+
+def build_status(plc, now, estado_actual, nuevo_estado, applied_state, control, cover_measured=""):
+    """Contenido de state/status.json: lo que el panel necesita de este ciclo."""
+    out = cycle_log.state_outputs(applied_state, alarm=plc.alarm_active)
+    row = last_decision_row or []
+    dec = dict(zip(cycle_log.DECISION_HEADER, row)) if row else {}
+    return {
+        "written_at": datetime.now().replace(microsecond=0).isoformat(sep=" "),
+        "cycle_time": now.isoformat(sep=" "),
+        "next_cycle_time": (now + timedelta(minutes=int(ITER_TIME_SEC))).isoformat(sep=" "),
+        "execution": plc.execution,
+        "paused": bool(control.get("paused")), "paused_by": control.get("paused_by", ""),
+        "plc_state_before": estado_actual, "plc_state": applied_state,
+        "plc_mode": out["plc_mode"], "cover": out["cover"], "cover_measured": cover_measured,
+        "pumps": {"b1": out["pump_b1"], "b2": out["pump_b2"], "ev1": out["ev1"], "ev2": out["ev2"]},
+        "inputs": _last_sample(system_data),
+        "inputs_samples": len(system_data.get("data", [])) if isinstance(system_data, dict) else 0,
+        "forecast": {
+            "demand_hot": dem_data.get("hot_dem", {}), "demand_cold": dem_data.get("cold_dem", {}),
+            "prod_hot": prod_data.get("hot", {}), "prod_cold": prod_data.get("cold", {}),
+            "rain": rain_data, "updated_day": last_prediction_update_day,
+        },
+        "plan": {"target_demand_j": current_dem_target, "selected_frames": list(selected_time_frames),
+                 "predicted_production_j": total_predicted_production},
+        "decision": {
+            "action": dec.get("action", ""), "next_state": nuevo_estado,
+            "in_time_frame": dec.get("in_time_frame", None), "mode": dec.get("mode", ""),
+            "hot_prod": dec.get("hot_prod", ""), "cold_prod": dec.get("cold_prod", ""),
+            "hot_dem": dec.get("hot_dem", ""), "cold_dem": dec.get("cold_dem", ""),
+        },
+        "schedule": getattr(plc, "schedule", None),
+    }
+
+
+def run_cycle(plc, out_path=OUTPUT_CSV_PATH, state_dir=state_io.STATE_DIR):
     """Un ciclo de control: decisión de la IA, nuevo estado del PLC (aplicado o, en modo sombra,
-    solo simulado) y una fila en dades.csv con la decisión, el modo y la posición de la tapa."""
+    solo simulado), una fila en dades.csv y state/status.json para el panel.
+    state/control.json (escrito por el panel) puede pausar la aplicación o, en sombra, fijar el estado virtual."""
+    global _last_set_state_seq
+    control = state_io.read_control(state_dir)
+
+    # 0) Órdenes del panel: estado virtual (solo sombra), una vez por set_state_seq
+    seq = int(control.get("set_state_seq") or 0)
+    if plc.execution == "shadow" and control.get("set_state") and seq != _last_set_state_seq:
+        logger.info(f"PANEL: estado virtual fijado a {control['set_state']} (seq {seq})")
+        plc.state = control["set_state"]
+        _last_set_state_seq = seq
+
     # 1) Obtener decision de la logica de control
     respuesta_nn = get_decision()
     respuesta_nn = respuesta_nn["respuesta"]
@@ -587,8 +642,13 @@ def run_cycle(plc, out_path=OUTPUT_CSV_PATH):
                 f"Se procede a aplicar el cambio en el PLC."
             )
 
-    # 4) Escribir nuevo estado en el PLC (PLCShadow solo actualiza su estado virtual)
-    plc.final_write_to_plc_nn_mode(nuevo_estado, combinaciones)
+    # 4) Escribir nuevo estado en el PLC (PLCShadow solo actualiza su estado virtual); en pausa, no
+    if control.get("paused"):
+        logger.info(f"PANEL: control en pausa ({control.get('paused_by', '')}); no se aplica {nuevo_estado}")
+        applied_state = estado_actual
+    else:
+        plc.final_write_to_plc_nn_mode(nuevo_estado, combinaciones)
+        applied_state = nuevo_estado
 
     # 5) dades.csv: decisión + estado + tapa (medida con los finales de carrera solo en modo real)
     try:
@@ -599,12 +659,20 @@ def run_cycle(plc, out_path=OUTPUT_CSV_PATH):
     try:
         cycle_log.write_cycle_row(
             out_path, last_decision_row,
-            cycle_log.state_columns(plc.execution, estado_actual, nuevo_estado,
+            cycle_log.state_columns(plc.execution, estado_actual, applied_state,
                                     cover_measured=cover_measured, alarm=plc.alarm_active),
         )
     except Exception:
         logger.exception(f"Error escribiendo {out_path}")
-    return nuevo_estado
+
+    # 6) status.json para el panel
+    try:
+        now = datetime.now().replace(microsecond=0)
+        state_io.write_status(state_dir, build_status(plc, now, estado_actual, nuevo_estado, applied_state,
+                                                      control, cover_measured))
+    except Exception:
+        logger.exception("Error escribiendo status.json")
+    return applied_state
 
 
 def stop():
