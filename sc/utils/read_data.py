@@ -227,6 +227,11 @@ def get_last_data_from_db_legacy():
 #   source: ruta completa al CSV
 #   varnames: lista de posibles nombres en la columna VarName
 # ---------------------------------------------------------------------------
+def ir_varname(unit):
+    """WinCC tag of the net infrared radiation of a unit ("RCEa" / "RCEb") in Pyrgeometer0.csv."""
+    return f"E_FIR, neto, [W/m2]_{unit}"
+
+
 VARIABLE_SOURCES = {
     "hot": {
         "varnames": ["TempT6_RCEa"],
@@ -245,8 +250,8 @@ VARIABLE_SOURCES = {
         "source": solar_dir,  # radiación solar
     },
     "ir": {
-        "varnames": ["E_FIR, neto, [W/m2]_RCEb"],
-        "source": ir_dir,     # radiación IR neta
+        "varnames": [ir_varname(config.IR_UNIT)],
+        "source": ir_dir,     # radiación IR neta (unidad A; la B no es una medida, ver config.IR_UNIT)
     },
 }
 

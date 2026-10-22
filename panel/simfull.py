@@ -12,11 +12,12 @@ from datetime import datetime, timedelta, date as date_type
 from sc.decision import decide, next_state as decision_next_state
 from sc.plc_shadow import PLCShadow, DEFAULT_SCHEDULE
 from sc.cycle_log import state_outputs
+from sc import config as sc_config
 from sc.utils.read_data import get_mode
 
 SAMPLE_VARS = {"cold": ("t_cold_tank_c", "RCE-a"), "hot": ("t_hot_tank_c", "RCE-a"),
                "wind_vel_m_s": ("wind_speed_m_s", "RCE-a"), "solar_rad_w_m2": ("solar_global_w_m2", "RCE-a"),
-               "ir_rad_w_m2": ("ir_net_w_m2", "RCE-b")}
+               "ir_rad_w_m2": ("ir_net_w_m2", "RCE-a" if sc_config.IR_UNIT == "RCEa" else "RCE-b")}   # as the control
 OVERRIDE_LABELS = {"cold": "Depósito frío T9 (°C)", "hot": "Depósito caliente T6 (°C)", "wind_vel_m_s": "Viento (m/s)",
                    "solar_rad_w_m2": "Irradiancia solar (W/m²)", "ir_rad_w_m2": "Infrarrojo neto (W/m²)"}
 NOTE = ("La previsión meteorológica que usa el modelo es la de hoy (Open-Meteo, AEMET, NASA), no la del día simulado; "

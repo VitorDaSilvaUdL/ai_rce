@@ -44,11 +44,13 @@
     "frame_key_format": "forecast",
     "demand_adjust": "frame_prod",
     "next_state_policy": "frame_mode",
+    "ir_unit": "RCEa",
     "_antiguo": {
       "frame_key_format": "iso",
       "demand_adjust": "pump_wh",
       "next_state_policy": "toggle",
-      "cop_pump_energy_units": "Wh"
+      "cop_pump_energy_units": "Wh",
+      "ir_unit": "RCEb"
     }
   }
 }

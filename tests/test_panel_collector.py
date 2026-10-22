@@ -20,8 +20,10 @@ def test_state_columns_carry_cop_production_and_control_version():
 
 def test_control_cfg_tag():
     assert cycle_log.control_cfg_tag("forecast", "frame_mode", "frame_prod", "J") == "fixed"
-    assert cycle_log.control_cfg_tag("iso", "toggle", "pump_wh", "Wh") == "legacy"
-    assert cycle_log.control_cfg_tag("forecast", "toggle", "frame_prod", "J") == "fk=forecast;ns=toggle;da=frame_prod;cop=J"
+    assert cycle_log.control_cfg_tag("iso", "toggle", "pump_wh", "Wh", "RCEb") == "legacy"
+    assert cycle_log.control_cfg_tag("forecast", "toggle", "frame_prod", "J") == "fk=forecast;ns=toggle;da=frame_prod;cop=J;ir=RCEa"
+    # the infrared input of the model: unit A (single pyrgeometer) is part of the corrected control
+    assert cycle_log.control_cfg_tag("forecast", "frame_mode", "frame_prod", "J", "RCEb") == "fk=forecast;ns=frame_mode;da=frame_prod;cop=J;ir=RCEb"
 
 
 def test_run_cycle_writes_cop_and_control_version(tmp_path, monkeypatch):

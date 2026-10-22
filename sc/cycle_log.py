@@ -63,15 +63,15 @@ def state_outputs(state, alarm=False):
     }
 
 
-def control_cfg_tag(frame_key_format, next_state_policy, demand_adjust, cop_units):
-    """Short tag of the control version that produced a row: 'fixed' (corrections of 2026-10-21), 'legacy'
-    (campaign 2025 behaviour) or the explicit mix."""
-    cfg = (frame_key_format, next_state_policy, demand_adjust, cop_units)
-    if cfg == ("forecast", "frame_mode", "frame_prod", "J"):
+def control_cfg_tag(frame_key_format, next_state_policy, demand_adjust, cop_units, ir_unit="RCEa"):
+    """Short tag of the control version that produced a row: 'fixed' (corrections of 2026-10-21 and the infrared
+    input of unit A, 2026-10-22), 'legacy' (campaign 2025 behaviour) or the explicit mix."""
+    cfg = (frame_key_format, next_state_policy, demand_adjust, cop_units, ir_unit)
+    if cfg == ("forecast", "frame_mode", "frame_prod", "J", "RCEa"):
         return "fixed"
-    if cfg == ("iso", "toggle", "pump_wh", "Wh"):
+    if cfg == ("iso", "toggle", "pump_wh", "Wh", "RCEb"):
         return "legacy"
-    return f"fk={frame_key_format};ns={next_state_policy};da={demand_adjust};cop={cop_units}"
+    return f"fk={frame_key_format};ns={next_state_policy};da={demand_adjust};cop={cop_units};ir={ir_unit}"
 
 
 def state_columns(execution, state_before, state, cover_measured="", alarm=False, cop=None, frame_prod_j=None,

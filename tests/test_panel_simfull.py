@@ -21,7 +21,7 @@ def readings_for(start, hours, step_min=5):
                 ("t_hot_tank_c", "RCE-a", "TempT6"): 40 + (h - 12) * 0.5,
                 ("wind_speed_m_s", "RCE-a", "VelVent"): 1.0,
                 ("solar_global_w_m2", "RCE-a", "IO_SENSOR1_DATA"): max(0, 600 * (1 - abs(h - 13) / 6)),
-                ("ir_net_w_m2", "RCE-b", "E_FIR, neto, [W/m2]"): -70 if (h < 7 or h > 19) else -20}
+                ("ir_net_w_m2", "RCE-a", "E_FIR, neto, [W/m2]"): -70 if (h < 7 or h > 19) else -20}
         for (var, sysm, tag), v in vals.items():
             out.append(Reading(ts=t, tag=tag, system=sysm, variable=var, value=round(v, 2), valid=True))
         t += timedelta(minutes=step_min)

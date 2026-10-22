@@ -19,7 +19,7 @@ from .plc_controller import PLCController
 from sc.config import (
     PREDICT_URL, P_BOMBA_WATTS, MIN_TIME_STEP,
     PLC_IP, PLC_RACK, PLC_SLOT, OUTPUT_CSV, ITER_TIME_SEC,
-    PLC_CONFIG, OUTPUT_CSV_PATH, COP_PUMP_ENERGY_UNITS, FRAME_KEY_FORMAT, DEMAND_ADJUST, NEXT_STATE_POLICY
+    PLC_CONFIG, OUTPUT_CSV_PATH, COP_PUMP_ENERGY_UNITS, FRAME_KEY_FORMAT, DEMAND_ADJUST, NEXT_STATE_POLICY, IR_UNIT
 )
 from sc.plc_shadow import make_plc
 from sc import cycle_log
@@ -28,7 +28,7 @@ from sc import decision
 
 last_decision_row = None  # fila de get_decision() del ciclo en curso (DECISION_HEADER)
 last_decision = None      # decision.Decision del ciclo en curso (motivos para el panel)
-CONTROL_CFG_TAG = cycle_log.control_cfg_tag(FRAME_KEY_FORMAT, NEXT_STATE_POLICY, DEMAND_ADJUST, COP_PUMP_ENERGY_UNITS)
+CONTROL_CFG_TAG = cycle_log.control_cfg_tag(FRAME_KEY_FORMAT, NEXT_STATE_POLICY, DEMAND_ADJUST, COP_PUMP_ENERGY_UNITS, IR_UNIT)
 action = 0                # 0 = no, 1 = si, 2 = parada (última decisión aplicada)
 mode = "parada"           # modo de la última franja activa o leído del PLC al arrancar
 _last_set_state_seq = 0   # último control.json:set_state_seq aplicado (modo sombra)

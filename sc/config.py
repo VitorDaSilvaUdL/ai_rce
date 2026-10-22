@@ -44,6 +44,9 @@ CONTROL = _raw.get("control", {})
 FRAME_KEY_FORMAT = CONTROL.get("frame_key_format", "forecast")      # "forecast" | "iso" (antiguo)
 DEMAND_ADJUST = CONTROL.get("demand_adjust", "frame_prod")          # "frame_prod" | "pump_wh" (antiguo)
 NEXT_STATE_POLICY = CONTROL.get("next_state_policy", "frame_mode")  # "frame_mode" | "toggle" (antiguo)
+# Infrarrojo neto que entra al modelo (2026-10-22): "RCEa" (único pirgeómetro, por defecto) | "RCEb" (antiguo: las
+# etiquetas de la unidad B de Pyrgeometer0.csv no son una medida, valen 33 W/m2 fijos)
+IR_UNIT = CONTROL.get("ir_unit", "RCEa")
 
 # dades.csv: ruta relativa a la carpeta del proyecto, o absoluta
 OUTPUT_CSV = _raw["paths"]["output_csv"]
