@@ -72,3 +72,17 @@ def test_failed_entries_raise_an_alert(ctx):
     login(c)
     alerts = c.get("/api/status").json()["alerts"]
     assert any(a["id"] == f"agenda:{e['id']}" and "Agenda" in a["title"] for a in alerts)
+
+
+def test_a_week_of_cold_nights_in_one_go(ctx):
+    login(TestClient(web.create_app(ctx)))
+    c = as_user(ctx, "roger.vila")
+    day = (datetime.now() + timedelta(days=1)).replace(hour=19, minute=0, second=0, microsecond=0)
+    r = c.post("/api/agenda", json={"kind": "estado", "target": "ColdMode1", "start": fmt(day),
+                                    "end": fmt(day + timedelta(hours=12)), "at_end": "parada", "repeat_days": 7})
+    assert r.status_code == 200, r.text
+    nights = [e for e in ctx.agenda.entries() if e["kind"] == "estado"]
+    assert len(nights) == 7 and nights[-1]["start"][:10] == (day + timedelta(days=6)).strftime("%Y-%m-%d")
+    assert all(e["at_end"] == "parada" and e["end"][11:16] == "07:00" for e in nights)
+    assert c.post("/api/agenda", json={"kind": "estado", "target": "ColdMode1", "start": fmt(day), "end": fmt(day + timedelta(hours=1)),
+                                       "repeat_days": 30}).status_code == 422

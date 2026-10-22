@@ -158,6 +158,7 @@ class AgendaRequest(BaseModel):
     end: Optional[str] = None         # state only
     at_end: str = "control"
     trial: bool = True
+    repeat_days: int = Field(default=1, ge=1, le=14)      # the same entry on N consecutive days
 
 
 class DryRunRequest(BaseModel):
@@ -680,17 +681,29 @@ def create_app(ctx: PanelContext) -> FastAPI:
         require_writer(u)
         require_lock(u)
         start, end = _parse_local(body.start, "inicio"), _parse_local(body.end, "fin")
+        created = []
         try:
-            if body.kind == "estado":
-                e = ctx.agenda.add_state(u["name"], body.target, start, end, at_end=body.at_end, trial=body.trial)
-            elif body.kind == "mando":
-                e = ctx.agenda.add_command(u["name"], body.target, start)
-            else:
-                raise ValueError("Tipo de entrada desconocido")
+            for k in range(body.repeat_days):
+                shift = timedelta(days=k)
+                if body.kind == "estado":
+                    if k and not start:
+                        raise ValueError("Para repetir varios días hay que poner la hora de inicio")
+                    created.append(ctx.agenda.add_state(u["name"], body.target, start + shift if start else None,
+                                                        end + shift if end else None, at_end=body.at_end, trial=body.trial))
+                elif body.kind == "mando":
+                    if k and not start:
+                        raise ValueError("Para repetir varios días hay que poner la hora del mando")
+                    created.append(ctx.agenda.add_command(u["name"], body.target, start + shift if start else None))
+                else:
+                    raise ValueError("Tipo de entrada desconocido")
         except ValueError as exc:
+            for c in created:                  # all or nothing
+                ctx.agenda.remove(c["id"])
             raise HTTPException(422, str(exc))
-        span = f"{e['start'][:16]}" + (f" – {e['end'][:16]}" if e.get("end") else "")
-        log_action(u, f"agenda:crear:#{e['id']} {e['label']} {span}")
+        for c in created:
+            span = f"{c['start'][:16]}" + (f" – {c['end'][:16]}" if c.get("end") else "")
+            log_action(u, f"agenda:crear:#{c['id']} {c['label']} {span}")
+        e = created[0]
         # an entry that starts now begins right away; in REAL mode the PLC job can take a minute: do not block the request
         if ctx.mode == "real":
             threading.Thread(target=ctx.scheduler.tick, name="agenda-now", daemon=True).start()

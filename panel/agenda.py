@@ -65,6 +65,13 @@ class Agenda:
                     e.update(fields)
             self._save(data)
 
+    def remove(self, entry_id):
+        """Only to undo entries just created (a repeated entry that fails half way)."""
+        with self._lock:
+            data = self._load()
+            data["entries"] = [e for e in data["entries"] if e["id"] != entry_id]
+            self._save(data)
+
     def _new(self, entry):
         with self._lock:
             data = self._load()
