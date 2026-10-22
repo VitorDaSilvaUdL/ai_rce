@@ -253,13 +253,11 @@ def rodona_hora_avall(dt):
 
 
 def get_now_val_2(curr: dict):
-    now = rodona_hora_avall(datetime.now())
-    left = now - timedelta(minutes=1)
-    for frame in curr.keys():
-        frame = datetime.strptime(frame, "%Y-%m-%dT%H:%M:%S") - timedelta(days=1)
-        if now.hour == frame.hour and frame.minute == 0 and now.day == frame.day or frame.hour == left.hour and frame.minute == 59 and now.day == frame.day:
-            return curr[(frame + timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%S") ]
-    return 0
+    """Demanda de la hora actual: clave "YYYY-MM-DDTHH:00:00" en hora local, como la da la API
+    (api/rce_predictors/future/timekeys.py). Antes se restaba un día y se aceptaba el minuto 59 para compensar las
+    horas mal reconstruidas, y la mitad de los días no se encontraba nada."""
+    key = rodona_hora_avall(datetime.now()).isoformat(timespec="seconds")
+    return curr.get(key, 0)
 
 def update_predictions(now, system_data, context: str) -> bool:
     """

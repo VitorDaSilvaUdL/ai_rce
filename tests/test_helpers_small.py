@@ -169,10 +169,9 @@ def test_get_now_val_varias_claves_misma_franja(monkeypatch):
 def test_get_now_val_2_caso_frontal_en_hora_en_punto(monkeypatch):
     """
     Fijamos ahora=2025-01-01 12:34 → rodona_hora_avall → 12:00.
-    En curr las claves están un día por delante (como en las predicciones),
-    así que para que coincida la condición:
-        frame = clave - 1 día
-    debe tener misma hora y minuto=0 que 'now'.
+    La API etiqueta cada hora de la previsión con su hora local en punto
+    (api/rce_predictors/future/timekeys.py): se devuelve la de las 12:00 de hoy.
+    Antes las claves llegaban a veces un día por delante y aquí se restaba un día.
     """
 
     class FixedDateTime(datetime):
@@ -182,9 +181,9 @@ def test_get_now_val_2_caso_frontal_en_hora_en_punto(monkeypatch):
 
     monkeypatch.setattr(main, "datetime", FixedDateTime)
 
-    # clave 2025-01-02T12:00:00 → frame=2025-01-01T12:00:00
     curr = {
-        "2025-01-02T12:00:00": 99.0,
+        "2025-01-01T12:00:00": 99.0,
+        "2025-01-02T12:00:00": 11.0,     # la misma hora de mañana: no
     }
 
     res = get_now_val_2(curr)
@@ -212,12 +211,11 @@ def test_get_now_val_2_sin_coincidencias_devuelve_cero(monkeypatch):
     assert res == 0
 
 
-def test_get_now_val_2_caso_minuto_59_anterior(monkeypatch):
+def test_get_now_val_2_ya_no_acepta_el_minuto_59_ni_el_dia_siguiente(monkeypatch):
     """
-    Probamos la segunda parte de la condición:
-    se compara también con left = now - 1 minuto.
-    Fijamos now=2025-01-01 12:00 → left=11:59.
-    Queremos una clave que, al restar un día, dé frame=2025-01-01 11:59.
+    Antes se aceptaba también la clave del minuto 59 anterior (horas mal reconstruidas,
+    09:59 en vez de 10:00), un día por delante. Ahora las horas llegan exactas.
+    Fijamos now=2025-01-01 12:00.
     """
 
     class FixedDateTime(datetime):
@@ -227,13 +225,8 @@ def test_get_now_val_2_caso_minuto_59_anterior(monkeypatch):
 
     monkeypatch.setattr(main, "datetime", FixedDateTime)
 
-    # clave 2025-01-02T11:59:00 → frame=2025-01-01T11:59:00
-    curr = {
-        "2025-01-02T11:59:00": 55.0,
-    }
-
-    res = get_now_val_2(curr)
-    assert res == 55.0
+    assert get_now_val_2({"2025-01-02T11:59:00": 55.0}) == 0
+    assert get_now_val_2({"2025-01-02T11:59:00": 55.0, "2025-01-01T12:00:00": 7.0}) == 7.0
 
 
 # --------------------------------------------------------------------
