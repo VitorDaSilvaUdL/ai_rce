@@ -21,6 +21,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 $Root = Split-Path $PSScriptRoot -Parent
+. (Join-Path $PSScriptRoot 'lab_common.ps1')
 $Venv = Join-Path $Root '.venv'
 $VenvPy = Join-Path $Venv 'Scripts\python.exe'
 $Logs = Join-Path $Root 'logs'
@@ -69,9 +70,15 @@ foreach ($f in 'sc\main.py', 'sc\plc_shadow.py', 'api\main.py', 'deploy\run_api.
 }
 Ok "ai_rce en $Root (con modo sombra)"
 
-# another ai_rce already running could be writing to the PLC: never install next to it
+# the panel already replaces the shadow tasks: an installation with panel is updated with deploy\update_lab.ps1
+if (-not $NoTasks -and (Get-ScheduledTask -TaskName 'RCE-Panel' -ErrorAction SilentlyContinue)) {
+  Die "El Panel RCE ya está instalado en este PC (tarea «RCE-Panel»). Para actualizar: powershell -ExecutionPolicy Bypass -File deploy\update_lab.ps1"
+}
+# another ai_rce already running could be writing to the PLC: never install next to it. The processes of this folder
+# (and their children: the .venv launcher restarts the base interpreter) are not «another» ai_rce.
+$mine = @(Get-RceProcessTree $Root | ForEach-Object { [int]$_.ProcessId })
 $others = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
-  Where-Object { $_.Name -match '^pythonw?\.exe$' -and $_.CommandLine -match '(sc|api)\.main' -and $_.CommandLine -notmatch [regex]::Escape($Venv) })
+  Where-Object { $_.Name -match '^pythonw?\.exe$' -and $_.CommandLine -match '(sc|api|panel)\.main' -and $mine -notcontains [int]$_.ProcessId })
 if ($others.Count -gt 0) {
   $list = ($others | ForEach-Object { "PID $($_.ProcessId): $($_.CommandLine)" }) -join "`n   "
   Die "Hay otro ai_rce en marcha en este PC (podría estar escribiendo en el PLC). Páralo antes de seguir:`n   $list"
@@ -80,8 +87,8 @@ $otherTasks = @(Get-ScheduledTask -ErrorAction SilentlyContinue | Where-Object {
 if ($otherTasks.Count -gt 0) { Warn ("Tareas programadas con 'rce' en el nombre (revisar que no arranquen otro ai_rce): " + (($otherTasks | ForEach-Object { $_.TaskName }) -join ', ')) }
 Ok 'No hay otro ai_rce en marcha'
 
-$listen = Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction SilentlyContinue
-if ($listen -and -not (Get-ScheduledTask -TaskName $TaskApi -ErrorAction SilentlyContinue)) {
+$listen = @(Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction SilentlyContinue | Where-Object { $mine -notcontains [int]$_.OwningProcess })
+if ($listen.Count -and -not (Get-ScheduledTask -TaskName $TaskApi -ErrorAction SilentlyContinue)) {
   Die "El puerto 8000 (API de ai_rce) ya está en uso por el proceso $($listen[0].OwningProcess)."
 }
 
@@ -124,9 +131,8 @@ New-Item -ItemType Directory -Force $Logs | Out-Null
 foreach ($t in $TaskSc, $TaskApi) {
   if (Get-ScheduledTask -TaskName $t -ErrorAction SilentlyContinue) { Stop-ScheduledTask -TaskName $t -ErrorAction SilentlyContinue }
 }
-Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
-  Where-Object { $_.CommandLine -and $_.CommandLine -match [regex]::Escape($Venv) } |
-  ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+$left = @(Stop-RceProcessTree $Root 30)
+if ($left.Count) { Die ("No se han podido parar estos procesos de esta instalación: " + (($left | ForEach-Object { "PID $($_.ProcessId) $(Get-RceModule $_)" }) -join ', ')) }
 if (-not (Test-Path $VenvPy)) {
   if ((Run-Logged $py.Exe @('-m', 'venv', "`"$Venv`"") (Join-Path $Logs 'venv.log')) -ne 0) { Die "No se pudo crear $Venv (ver logs\venv.log)" }
 }
@@ -167,6 +173,7 @@ Ok (Get-Content $testLog | Where-Object { $_ -match 'passed' } | Select-Object -
 # ----------------------------------------------------------------------------------------------------------------
 $dades = Join-Path $Root 'dades.csv'
 $fbYml = 'C:\Program Files\Filebeat\filebeat.yml'
+$started = (Get-Date).AddSeconds(-2)          # the first cycle checked in 6/6 must be later than this
 if ($NoTasks) {
   Say "5/6 Prueba: API + un ciclo de control en primer plano ($RunSeconds s)"
   $api = Start-Process -FilePath $VenvPy -ArgumentList '-m', 'api.main' -WorkingDirectory $Root -WindowStyle Hidden -PassThru `
@@ -211,17 +218,16 @@ if ($NoTasks) {
 
 # ----------------------------------------------------------------------------------------------------------------
 Say '6/6 Comprobación del primer ciclo'
-$deadline = (Get-Date).AddMinutes(5); $row = $null
+$deadline = (Get-Date).AddMinutes(10); $row = $null
 do {
-  if (Test-Path $dades) { $row = Get-Content $dades -Tail 1 }
-  if ($row -and $row -match ',shadow,') { break }
+  $c = Get-RceLastCycle $dades
+  if ($c -and $c.Time -and $c.Time -gt $started -and $c.Execution -eq 'shadow') { $row = $c; break }
   Start-Sleep 5
 } until ((Get-Date) -gt $deadline)
-if (-not ($row -match ',shadow,')) { Die "No hay ningún ciclo en modo sombra en $dades tras 5 min. Ver logs\sc_task.log, logs\api_task.log y sc.log" }
-Ok "Primer ciclo: $row"
-$plcConn = @(Get-NetTCPConnection -RemotePort 102 -ErrorAction SilentlyContinue | Where-Object {
-  (Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue).Path -like "$Venv*" })
-if ($plcConn.Count -gt 0) { Die 'ai_rce tiene una conexión abierta al puerto 102 (PLC). No debería en modo sombra: desinstala y avisa.' }
+if (-not $row) { Die "No hay ningún ciclo nuevo en modo sombra en $dades tras 10 min (posterior al arranque). Ver logs\sc_task.log, logs\api_task.log y sc.log" }
+Ok "Primer ciclo: $($row.Time.ToString('yyyy-MM-dd HH:mm:ss')), execution = shadow"
+$p102 = Get-RcePort102 $Root
+if ($p102.Mine.Count -gt 0) { Die 'ai_rce tiene una conexión abierta al puerto 102 (PLC). No debería en modo sombra: desinstala y avisa.' }
 Ok 'Ninguna conexión de ai_rce con el PLC (puerto 102)'
 
 Write-Host ''

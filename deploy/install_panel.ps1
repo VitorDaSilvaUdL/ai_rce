@@ -51,6 +51,12 @@ if ($listen -and -not (Get-ScheduledTask -TaskName $Task -ErrorAction SilentlyCo
   Die "El puerto $Port ya está en uso por el proceso $($listen[0].OwningProcess)."
 }
 Ok "Puerto $Port"
+. (Join-Path $PSScriptRoot 'lab_common.ps1')
+$public = @(Get-RcePublicProfiles)
+if ($public.Count) {
+  Warn ("Redes con perfil Público: $($public -join ', '). La regla «Panel RCE» (Dominio y Privado) no se aplica en ellas: " +
+        'desde otros PC no se podrá abrir el panel. Este script no cambia el perfil: pídeselo al administrador del PC.')
+}
 $ips = (Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue | Where-Object { $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254.*' } | ForEach-Object { $_.IPAddress }) -join ', '
 Ok "Direcciones de este PC en la red: $ips"
 if ($CheckOnly) { Write-Host ''; Write-Host 'Comprobaciones correctas. Para instalar: powershell -ExecutionPolicy Bypass -File deploy\install_panel.ps1' -ForegroundColor Green; exit 0 }
@@ -120,7 +126,8 @@ Write-Host ''
 Write-Host 'LISTO. Panel RCE instalado.' -ForegroundColor Green
 Write-Host "  En este PC:          http://localhost:$Port  (acceso directo «Panel RCE» en el escritorio)"
 Write-Host "  Desde otros PC:      http://<IP de este PC>:$Port   ($ips)"
-Write-Host '  Primer paso:         abrir el panel en este PC y crear la primera persona (nombre y PIN)'
+Write-Host '  Primer paso:         abrir el panel en este PC y crear la cuenta rce_admin'
+if ($public.Count) { Write-Host "  Aviso:               redes con perfil Público ($($public -join ', ')): desde otros PC el panel no se abrirá hasta cambiar el perfil." -ForegroundColor Yellow }
 Write-Host '  Modo REAL:           sin contraseña aún (no se puede activar). Se define en Ajustes desde este PC, con el mando.'
 Write-Host "  Registros:           $Logs\panel_task.log, api.log, sc_process.log"
 Write-Host '  Desinstalar:         powershell -ExecutionPolicy Bypass -File deploy\uninstall_panel.ps1'

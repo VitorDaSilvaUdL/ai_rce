@@ -32,7 +32,7 @@ def test_categories():
 
 
 def test_audit_filters_newest_first_and_csv(ctx):
-    t0 = datetime(2026, 10, 22, 9, 0)
+    t0 = datetime(2020, 1, 15, 9, 0)        # far from today: the login of the test itself (now) never falls in the window
     ctx.actions.add("roger.vila", "login", "shadow", "ok", now=t0, host="10.0.0.5")
     ctx.actions.add("roger.vila", "dryrun:cold", "shadow", "ok", now=t0 + timedelta(minutes=5), host="10.0.0.5")
     ctx.actions.add("vitor.dasilva", "settings:refresh_s=20", "shadow", "ok", now=t0 + timedelta(hours=2), host="LAB")
@@ -42,7 +42,7 @@ def test_audit_filters_newest_first_and_csv(ctx):
     assert [x["accion"] for x in r["rows"]] == ["dryrun:cold", "login"]                 # newest first
     assert {"rce_admin", "roger.vila", "vitor.dasilva"} <= set(r["users"])
     assert [x["accion"] for x in c.get("/api/audit", params={"category": "mandos"}).json()["rows"]] == ["dryrun:cold"]
-    r = c.get("/api/audit", params={"since": "2026-10-22T10:00", "until": "2026-10-22T12:00"}).json()
+    r = c.get("/api/audit", params={"since": "2020-01-15T10:00", "until": "2020-01-15T12:00"}).json()
     assert [x["accion"] for x in r["rows"]] == ["settings:refresh_s=20"]
     assert r["rows"][0]["categoria"] == "ajustes"
     csv = c.get("/api/audit.csv", params={"user": "roger.vila"})

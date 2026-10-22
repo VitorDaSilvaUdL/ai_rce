@@ -215,7 +215,7 @@ def test_run_cycle_in_shadow_logs_what_would_be_applied(tmp_path, monkeypatch):
     out = tmp_path / "dades.csv"
     plc = PLCShadow(initial_state="ColdMode1", schedule=SCHEDULE)
 
-    main.run_cycle(plc, out)
+    main.run_cycle(plc, out, state_dir=tmp_path)
 
     row = dict(zip(cycle_log.HEADER, read_rows(out)[1]))
     assert row["execution"] == "shadow"

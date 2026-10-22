@@ -1,4 +1,6 @@
 import logging
+from pathlib import Path
+import os
 from logging.handlers import SMTPHandler
 import time
 
@@ -28,11 +30,14 @@ def _create_base_handlers():
     formatter = logging.Formatter(fmt)
 
     # --- Handler 1: sc.log (nivel configurado) ---
-    file_handler = logging.FileHandler("sc.log", mode="a", encoding="utf-8")
+    # SC_LOG_DIR (optional, used by the tests): folder for sc.log and sc_debug.log; by default the working folder
+    log_dir = Path(os.getenv("SC_LOG_DIR") or ".")
+    log_dir.mkdir(parents=True, exist_ok=True)
+    file_handler = logging.FileHandler(log_dir / "sc.log", mode="a", encoding="utf-8")
     file_handler.setFormatter(formatter)
 
     # --- Handler 2: sc_debug.log (TODO DEBUG SIEMPRE) ---
-    debug_handler = logging.FileHandler("sc_debug.log", mode="a", encoding="utf-8")
+    debug_handler = logging.FileHandler(log_dir / "sc_debug.log", mode="a", encoding="utf-8")
     debug_handler.setFormatter(formatter)
     debug_handler.setLevel(logging.DEBUG)  # SIEMPRE DEBUG
 
