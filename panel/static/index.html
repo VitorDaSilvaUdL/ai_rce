@@ -30,6 +30,7 @@
   <button data-tab="lecturas">Lecturas</button>
   <button data-tab="control">Control</button>
   <button data-tab="mandos">Mandos</button>
+  <button data-tab="agenda">Agenda</button>
   <button data-tab="simulador">Simulador</button>
   <button data-tab="historial">Historial</button>
   <button data-tab="diario">Diario</button>
@@ -57,6 +58,7 @@
       </div>
       <div class="actuators" id="st-pumps"></div>
       <div class="muted" id="st-since"></div>
+      <div id="st-agenda" class="agenda-now" hidden></div>
     </div>
     <div class="card">
       <h2>Última decisión</h2>
@@ -151,6 +153,44 @@
     <div id="dr-summary" class="dr-summary"></div>
     <ol id="dr-steps" class="steps"></ol>
     <div class="row" id="job-bar" hidden><button class="btn danger" id="btn-job-abort">■ Abortar</button><span class="muted" id="job-info"></span></div>
+  </div>
+</section>
+
+<!-- ===================================================== AGENDA -->
+<section id="tab-agenda" class="tab">
+  <div class="grid-2">
+    <div class="card">
+      <h2>Programar <span id="ag-mode" class="tag"></span></h2>
+      <form id="ag-form" class="form">
+        <fieldset><legend>Qué</legend>
+          <label><input type="radio" name="ag-kind" value="estado" checked> Mantener un estado del RCE</label>
+          <label><input type="radio" name="ag-kind" value="mando"> Un mando a una hora</label>
+        </fieldset>
+        <label id="ag-state-row">Estado <select id="ag-state"></select></label>
+        <label id="ag-cmd-row" hidden>Mando <select id="ag-cmd"></select></label>
+        <label>Inicio <input type="datetime-local" id="ag-start"> <span class="muted" id="ag-start-hint">vacío = ahora</span></label>
+        <label id="ag-end-row">Fin <input type="datetime-local" id="ag-end"></label>
+        <label id="ag-atend-row">Al terminar <select id="ag-atend"></select></label>
+        <label>Repetir cada día durante <input type="number" id="ag-repeat" min="1" max="14" value="1" style="width:70px;margin:0 6px"> días</label>
+        <label class="switch" id="ag-trial-row"><input type="checkbox" id="ag-trial" checked> <span>Abrir un ensayo «manual» en el Diario (solo en modo REAL)</span></label>
+        <div class="row"><button class="btn ok" type="submit">Programar</button><button class="btn" type="button" id="ag-preset">Una semana de noches de frío 19:00–07:00</button></div>
+      </form>
+    </div>
+    <div class="card">
+      <h2>Cómo funciona</h2>
+      <ul class="reasons">
+        <li><b>Mantener un estado</b> (frío, calor, parada o automático del PLC) desde el inicio hasta el fin. Mientras dura, el control con IA sigue calculando y apuntando lo que haría, pero no aplica sus decisiones.</li>
+        <li><b>Al terminar</b>: vuelve el control automático (por defecto), parada, o el estado que había antes.</li>
+        <li><b>Un mando</b> (abrir, cerrar o probar la tapa, cambiar de modo) se ejecuta una vez a la hora indicada.</li>
+        <li><b>En SOMBRA</b> todo se aplica al estado simulado: el RCE real no se mueve.</li>
+        <li><b>En REAL</b> solo se ejecutan las entradas de rce_admin; las demás quedan en espera. Cada estado puede abrir y cerrar un ensayo «manual» en el Diario.</li>
+        <li>Hace falta tener el mando. Cancela quien creó la entrada o rce_admin; una entrada en curso se termina al cancelarla.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Entradas</h2>
+    <table class="table" id="ag-table"><thead><tr><th>#</th><th>Qué</th><th>Inicio</th><th>Fin</th><th>Al terminar</th><th>Quién</th><th>Estado</th><th></th></tr></thead><tbody></tbody></table>
   </div>
 </section>
 

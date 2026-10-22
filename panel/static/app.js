@@ -115,6 +115,7 @@
     if (name === "historial") loadHistory();
     if (name === "diario") loadDiary();
     if (name === "auditoria") loadAudit(true);
+    if (name === "agenda") loadAgenda();
     if (name === "ajustes") loadSettings();
     if (name === "simulador") {
       if (!$("#sim-now").value) $("#sim-now").value = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16);
@@ -168,6 +169,10 @@
     const sc = $("#st-cover"); sc.className = "big " + cover; $(".ico", sc).textContent = COVER_ICO[cover] || "?"; $("span:last-child", sc).textContent = COVER_ES[cover] || cover;
     actuators(c.pumps, $("#st-pumps"));
     const tag = $("#state-tag"); tag.textContent = s.mode === "real" ? "aplicado al PLC" : "estado simulado"; tag.className = "tag " + s.mode;
+    const ag = s.agenda || {}, agEl = $("#st-agenda");
+    const agText = ag.running ? `Agenda: ${ag.running.label} hasta las ${ag.running.end.slice(11, 16)} (${ag.running.end.slice(8, 10)}/${ag.running.end.slice(5, 7)}) · #${ag.running.id}, ${ag.running.author}`
+      : ag.next ? `Próximo en la agenda: ${ag.next.label}, ${ag.next.start.slice(8, 10)}/${ag.next.start.slice(5, 7)} a las ${ag.next.start.slice(11, 16)}` : "";
+    agEl.hidden = !agText; agEl.textContent = agText; agEl.classList.toggle("running", !!ag.running);
     $("#st-since").textContent = c.cycle_time ? `Último ciclo: ${fmtTs(c.cycle_time)}${c.paused ? ` · control en pausa (${c.paused_by})` : ""}${c.cover_measured ? ` · tapa medida: ${COVER_ES[c.cover_measured] || c.cover_measured}` : ""}` : "Sin ciclos del control todavía";
     const d = c.decision || {};
     if (c.cycle_time) {
@@ -498,6 +503,58 @@
   $("#people-form").addEventListener("submit", async (ev) => {
     ev.preventDefault();
     try { await post("/api/people", {name: $("#p-name").value.trim(), pin: $("#p-pin").value}); $("#p-name").value = ""; $("#p-pin").value = ""; toast("Persona guardada", "ok"); loadSettings(); } catch (e) {}
+  });
+
+  // ------------------------------------------------------------------ Agenda
+  let agOpts = null;
+  const AG_ST = {pendiente: "pendiente", en_curso: "en curso", hecha: "hecha", cancelada: "cancelada", fallida: "fallida", perdida: "no ejecutada"};
+  const localIso = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  function agKind() { return $("input[name=ag-kind]:checked").value; }
+  function agToggle() {
+    const st = agKind() === "estado";
+    $("#ag-state-row").hidden = !st; $("#ag-cmd-row").hidden = st; $("#ag-end-row").hidden = !st; $("#ag-atend-row").hidden = !st;
+    $("#ag-trial-row").hidden = !st; $("#ag-start-hint").textContent = st ? "vacío = ahora" : "obligatorio";
+  }
+  $$("input[name=ag-kind]").forEach((r) => r.addEventListener("change", agToggle));
+  async function loadAgenda() {
+    let d; try { d = await api("/api/agenda"); } catch (e) { return; }
+    if (!agOpts) {
+      agOpts = d;
+      $("#ag-state").innerHTML = Object.entries(d.states).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join("");
+      $("#ag-cmd").innerHTML = Object.entries(d.commands).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join("");
+      $("#ag-atend").innerHTML = Object.entries(d.at_end).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join("");
+      agToggle();
+    }
+    $("#ag-mode").textContent = d.mode === "real" ? "REAL: actúa en el PLC (solo rce_admin)" : "SOMBRA: estado simulado"; $("#ag-mode").className = "tag " + d.mode;
+    const mine = status && status.lock && status.lock.name === me;
+    $("#ag-table tbody").innerHTML = d.entries.map((e) => {
+      const canCancel = mine && ["pendiente", "en_curso"].includes(e.status) && (e.author === me || role === "admin");
+      const st = (AG_ST[e.status] || e.status) + (e.waiting && e.status === "pendiente" ? " (en espera: solo rce_admin en REAL)" : "");
+      return `<tr><td>${e.id}</td><td>${esc(e.kind === "mando" ? "Mando: " + e.label : e.label)}</td><td>${esc(fmtTs(e.start))}</td><td>${esc(e.end ? fmtTs(e.end) : "—")}</td>` +
+        `<td>${esc(e.at_end ? d.at_end[e.at_end] : "—")}</td><td>${esc(e.author)}</td><td><span class="ag-st ${esc(e.status)}">${esc(st)}</span>${e.message ? `<div class="muted">${esc(e.message)}</div>` : ""}</td>` +
+        `<td>${canCancel ? `<button class="btn small" data-cancel="${e.id}">Cancelar</button>` : ""}</td></tr>`;
+    }).join("") || "<tr><td colspan=8 class='muted'>No hay nada programado</td></tr>";
+    $$("#ag-table [data-cancel]").forEach((b) => b.addEventListener("click", async () => {
+      if (!confirm(`¿Cancelar la entrada #${b.dataset.cancel}? Si está en curso, termina ahora con su opción de final.`)) return;
+      try { await post(`/api/agenda/${b.dataset.cancel}/cancel`); toast("Entrada cancelada", "ok"); loadAgenda(); loadStatus(); } catch (e) {}
+    }));
+  }
+  $("#ag-preset").addEventListener("click", () => {
+    const now = new Date(), start = new Date(now); start.setHours(19, 0, 0, 0);
+    if (start <= now) start.setDate(start.getDate() + 1);
+    const end = new Date(start); end.setHours(start.getHours() + 12);
+    $("input[name=ag-kind][value=estado]").checked = true; agToggle();
+    $("#ag-state").value = "ColdMode1"; $("#ag-start").value = localIso(start); $("#ag-end").value = localIso(end);
+    $("#ag-atend").value = "parada"; $("#ag-repeat").value = 7;
+    toast("Rellenado: 7 noches de modo frío de 19:00 a 07:00, con parada al terminar. Revisa y pulsa «Programar».", "ok");
+  });
+  $("#ag-form").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const kind = agKind();
+    const body = {kind, target: kind === "estado" ? $("#ag-state").value : $("#ag-cmd").value, start: $("#ag-start").value || null,
+      end: kind === "estado" ? ($("#ag-end").value || null) : null, at_end: $("#ag-atend").value, trial: $("#ag-trial").checked,
+      repeat_days: +$("#ag-repeat").value || 1};
+    try { await post("/api/agenda", body); toast("Programado", "ok"); loadAgenda(); loadStatus(); } catch (e) {}
   });
 
   // ------------------------------------------------------------------ Auditoría

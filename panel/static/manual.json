@@ -8,6 +8,7 @@
     "Lecturas",
     "Control",
     "Mandos",
+    "Agenda",
     "Simulador",
     "Historial",
     "Diario",
@@ -654,6 +655,55 @@
       "real": "En modo REAL hace falta además el control en pausa y que el PLC responda. Cada mando pide confirmación, enseña el progreso y la tapa en vivo, y se puede abortar (los actuadores se quedan como estén)."
     },
     {
+      "id": "agenda",
+      "tab": "Agenda",
+      "kicker": "Agenda",
+      "title": "Programar estados y mandos: una campaña manual sin subir al edificio",
+      "lead": "Mantener un estado del RCE de una hora a otra (por ejemplo, modo frío de 19:00 a 07:00 cada noche) o lanzar un mando a una hora. Hace falta tener el mando.",
+      "items": [
+        [
+          "Mantener un estado",
+          "Frío, calor, parada o automático del PLC, del inicio (vacío = ahora) al fin. Mientras dura, la IA sigue apuntando lo que haría, pero no manda."
+        ],
+        [
+          "Al terminar",
+          "Vuelve el control automático (por defecto), parada, o el estado que había antes."
+        ],
+        [
+          "Un mando",
+          "Abrir, cerrar o probar la tapa, o cambiar de modo, una vez a la hora indicada."
+        ],
+        [
+          "Repetir",
+          "La misma entrada varios días seguidos (hasta 14). El botón «Una semana de noches de frío 19:00–07:00» lo rellena todo."
+        ],
+        [
+          "Cancelar",
+          "Quien creó la entrada o rce_admin. Si está en curso, termina en ese momento con su opción de final."
+        ]
+      ],
+      "howto": [
+        [
+          "En SOMBRA",
+          "Todo se aplica al estado simulado: el RCE real no se mueve. Sirve para que la IA parta del mismo estado que el RCE cuando el equipo lo maneja a mano."
+        ],
+        [
+          "En REAL",
+          "Solo se ejecutan las entradas de rce_admin; las demás quedan en espera. Cada estado puede abrir y cerrar un ensayo «manual» en el Diario."
+        ],
+        [
+          "En Inicio",
+          "Se ve la entrada en curso o la próxima."
+        ],
+        [
+          "Si algo falla",
+          "La entrada queda «fallida» con el motivo y sale un aviso en Inicio. Todo queda en la Auditoría."
+        ]
+      ],
+      "items_title": "Qué se puede programar",
+      "howto_title": "Según el modo"
+    },
+    {
       "id": "simulador",
       "tab": "Simulador",
       "kicker": "Simulador",
@@ -960,7 +1010,9 @@
           "Kibana",
           "Las mismas acciones llegan al dashboard «Salud del sistema»."
         ]
-      ]
+      ],
+      "items_title": "Qué se registra",
+      "howto_title": "Cómo usarla"
     },
     {
       "id": "ajustes",

@@ -162,3 +162,11 @@ body[data-role="viewer"] #trial-form button, body[data-role="viewer"] #note-form
 body[data-role="viewer"] #people-form { display: none !important; }
 
 #aud-table tr.bad td { color: var(--bad); }
+
+/* agenda */
+.agenda-now { margin-top: 8px; padding: 6px 10px; border-radius: 6px; background: var(--off-bg); color: var(--ink); font-size: 14px; }
+.agenda-now.running { background: var(--ok-bg); color: var(--ok); font-weight: 600; }
+.ag-st { font-size: 13px; font-weight: 700; padding: 1px 8px; border-radius: 4px; background: var(--off-bg); color: var(--off); }
+.ag-st.pendiente { background: var(--teal-bg); color: var(--teal); } .ag-st.en_curso { background: var(--ok-bg); color: var(--ok); }
+.ag-st.fallida { background: var(--bad-bg); color: var(--bad); } .ag-st.perdida { background: var(--warn-bg); color: var(--warn); }
+body[data-role="viewer"] #ag-form { display: none !important; }
