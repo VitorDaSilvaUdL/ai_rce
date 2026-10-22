@@ -153,6 +153,8 @@ seco (`panel/dryrun.py`: la secuencia exacta de escrituras que haría el PLC, si
 «Tomar el mando» (una sola persona a la vez). Especificación: `rce_review/panel_rce/ESPECIFICACION_panel_rce.md` del
 repositorio de trabajo. Instalación en el PC del laboratorio: `deploy/install_shadow_lab.ps1` (ai_rce en sombra) y
 después `deploy/install_panel.ps1` (tarea programada `RCE-Panel`, puerto 8050, acceso directo «Panel RCE»).
+Para actualizar un PC que ya tiene el panel, después de `git pull --ff-only`: `deploy/update_lab.ps1` (un solo
+comando como administrador; `-CheckOnly` para comprobar sin cambiar nada).
 
 Fases 2 y 3 del panel: `sc/decision.py` (la decisión en tiempo real como función pura con motivos, que el panel
 muestra y usa en el simulador), pestaña Control, simulador completo con el modelo y reproducción de un día
