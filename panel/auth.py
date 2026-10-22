@@ -11,6 +11,12 @@ def _hash(salt, pin):
     return hashlib.sha256((salt + str(pin)).encode("utf-8")).hexdigest()
 
 
+def user_id(name):
+    """User name = university e-mail without @udl.cat, lower case («Vitor.DaSilva@udl.cat» -> «vitor.dasilva»)."""
+    n = str(name or "").strip().lower()
+    return n[:-len("@udl.cat")] if n.endswith("@udl.cat") else n
+
+
 class People:
     """people: [{name, salt, hash}] inside the panel config JSON (other keys of the file are preserved)."""
 
@@ -31,21 +37,24 @@ class People:
         return [p["name"] for p in self._load().get("people", [])]
 
     def add(self, name, pin):
+        name = user_id(name)
         data = self._load()
-        people = [p for p in data.get("people", []) if p["name"] != name]
+        people = [p for p in data.get("people", []) if user_id(p["name"]) != name]
         salt = secrets.token_hex(8)
         people.append({"name": name, "salt": salt, "hash": _hash(salt, pin)})
         data["people"] = people
         self._save(data)
 
     def remove(self, name):
+        name = user_id(name)
         data = self._load()
-        data["people"] = [p for p in data.get("people", []) if p["name"] != name]
+        data["people"] = [p for p in data.get("people", []) if user_id(p["name"]) != name]
         self._save(data)
 
     def verify(self, name, pin):
+        name = user_id(name)
         for p in self._load().get("people", []):
-            if p["name"] == name:
+            if user_id(p["name"]) == name:
                 return secrets.compare_digest(p["hash"], _hash(p["salt"], pin))
         return False
 

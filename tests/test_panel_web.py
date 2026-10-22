@@ -96,7 +96,7 @@ def client(ctx):
     return TestClient(web.create_app(ctx))
 
 
-def login(client, name="Albert", pin="1234"):
+def login(client, name="albert", pin="1234"):
     r = client.post("/api/setup", json={"name": name, "pin": pin})
     assert r.status_code in (200, 409)
     r = client.post("/api/login", json={"name": name, "pin": pin})
@@ -108,19 +108,19 @@ def login(client, name="Albert", pin="1234"):
 def test_setup_only_from_localhost_and_only_once(ctx):
     client = TestClient(web.create_app(ctx))
     assert client.get("/api/me").json() == {"name": None, "people_exist": False, "lock": None, "mode": "shadow", "host": "testclient"}
-    assert client.post("/api/setup", json={"name": "Albert", "pin": "1234"}).status_code == 200
-    assert client.post("/api/setup", json={"name": "Roger", "pin": "0000"}).status_code == 409
+    assert client.post("/api/setup", json={"name": "albert", "pin": "1234"}).status_code == 200
+    assert client.post("/api/setup", json={"name": "roger", "pin": "0000"}).status_code == 409
     ctx.local_hosts = set()
-    ctx.people.remove("Albert")
-    assert client.post("/api/setup", json={"name": "Albert", "pin": "1234"}).status_code == 403
+    ctx.people.remove("albert")
+    assert client.post("/api/setup", json={"name": "albert", "pin": "1234"}).status_code == 403
 
 
 def test_pin_accepts_letters_digits_and_symbols(client):
-    assert client.post("/api/setup", json={"name": "Albert", "pin": "Lab2026x"}).status_code == 200
-    assert client.post("/api/login", json={"name": "Albert", "pin": "lab2026x"}).status_code == 401   # case matters
-    assert client.post("/api/login", json={"name": "Albert", "pin": "Lab2026x"}).status_code == 200
+    assert client.post("/api/setup", json={"name": "albert", "pin": "Lab2026x"}).status_code == 200
+    assert client.post("/api/login", json={"name": "albert", "pin": "lab2026x"}).status_code == 401   # case matters
+    assert client.post("/api/login", json={"name": "albert", "pin": "Lab2026x"}).status_code == 200
     client.post("/api/lock/take")
-    assert client.post("/api/people", json={"name": "Roger", "pin": "Rv_2026!"}).status_code == 200
+    assert client.post("/api/people", json={"name": "roger", "pin": "Rv_2026!"}).status_code == 200
     assert client.post("/api/people", json={"name": "Marc", "pin": "abc"}).status_code == 422          # too short
     assert client.post("/api/people", json={"name": "Marc", "pin": "    "}).status_code == 422         # only spaces
     assert client.post("/api/people", json={"name": "Marc", "pin": "x" * 33}).status_code == 422       # too long
@@ -146,12 +146,12 @@ def test_manual_is_served_and_covers_every_tab(client):
 
 def test_login_required_for_the_api(client):
     assert client.get("/api/status").status_code == 401
-    client.post("/api/setup", json={"name": "Albert", "pin": "1234"})
-    assert client.post("/api/login", json={"name": "Albert", "pin": "9999"}).status_code == 401
-    r = client.post("/api/login", json={"name": "Albert", "pin": "1234"})
+    client.post("/api/setup", json={"name": "albert", "pin": "1234"})
+    assert client.post("/api/login", json={"name": "albert", "pin": "9999"}).status_code == 401
+    r = client.post("/api/login", json={"name": "albert", "pin": "1234"})
     assert r.status_code == 200 and "panel_session" in r.cookies
     assert client.get("/api/status").status_code == 200
-    assert client.get("/api/me").json()["name"] == "Albert"
+    assert client.get("/api/me").json()["name"] == "albert"
     client.post("/api/logout")
     assert client.get("/api/status").status_code == 401
 
@@ -173,7 +173,7 @@ def test_status_has_what_inicio_needs(client):
     assert t9["value"] == 12.5 and t9["label"] == "Depósito frío (T9)" and t9["unit"] == "°C"
     assert {a["id"] for a in s["alerts"]} == {"sc_stopped"}
     assert s["lights"]["wincc"] == "ok" and s["lights"]["sc"] == "stopped" and s["lights"]["filebeat"] == "ok"
-    assert s["lock"] is None and s["me"] == "Albert"
+    assert s["lock"] is None and s["me"] == "albert"
 
 
 # ----------------------------------------------------------------------------------------------- system
@@ -185,7 +185,7 @@ def test_system_start_stop_logs_the_action(client, ctx):
     assert client.post("/api/system/restart/sc").status_code == 200
     acts = client.get("/api/actions").json()
     assert [a["accion"] for a in acts] == ["system:start", "system:stop", "system:restart:sc"]
-    assert acts[0]["autor"] == "Albert" and acts[0]["modo"] == "shadow"
+    assert acts[0]["autor"] == "albert" and acts[0]["modo"] == "shadow"
 
 
 # ----------------------------------------------------------------------------------------------- lock and commands
@@ -193,7 +193,7 @@ def test_commands_need_the_lock(client, ctx):
     login(client)
     r = client.post("/api/dryrun", json={"command": "cold"})
     assert r.status_code == 423
-    assert client.post("/api/lock/take").json()["lock"]["name"] == "Albert"
+    assert client.post("/api/lock/take").json()["lock"]["name"] == "albert"
     r = client.post("/api/dryrun", json={"command": "cold"})
     assert r.status_code == 200
     body = r.json()
@@ -217,11 +217,11 @@ def test_second_person_cannot_take_the_lock(ctx):
     a = TestClient(web.create_app(ctx))
     login(a)
     a.post("/api/lock/take")
-    ctx.people.add("Roger", "5678")
+    ctx.people.add("roger", "5678")
     b = TestClient(a.app)
-    b.post("/api/login", json={"name": "Roger", "pin": "5678"})
+    b.post("/api/login", json={"name": "roger", "pin": "5678"})
     r = b.post("/api/lock/take")
-    assert r.status_code == 423 and r.json()["lock"]["name"] == "Albert"
+    assert r.status_code == 423 and r.json()["lock"]["name"] == "albert"
     assert b.post("/api/dryrun", json={"command": "cold"}).status_code == 423
 
 
@@ -231,7 +231,7 @@ def test_pause_writes_control_json(client, ctx):
     client.post("/api/lock/take")
     assert client.post("/api/control/pause", json={"paused": True}).status_code == 200
     c = state_io.read_control(ctx.state_dir)
-    assert c["paused"] is True and c["paused_by"] == "Albert" and c["since"]
+    assert c["paused"] is True and c["paused_by"] == "albert" and c["since"]
     client.post("/api/control/pause", json={"paused": False})
     assert state_io.read_control(ctx.state_dir)["paused"] is False
 
@@ -250,7 +250,7 @@ def test_diary(client):
     assert r.status_code == 200 and r.json()["ensayo_id"].startswith("E")
     client.post("/api/diary", json={"kind": "incidencia", "text": "viento"})
     rows = client.get("/api/diary").json()
-    assert [x["tipo"] for x in rows] == ["ensayo_inicio", "incidencia"] and rows[1]["autor"] == "Albert"
+    assert [x["tipo"] for x in rows] == ["ensayo_inicio", "incidencia"] and rows[1]["autor"] == "albert"
     assert client.post("/api/diary", json={"kind": "otra_cosa", "text": "x"}).status_code == 422
 
 
@@ -258,14 +258,14 @@ def test_diary(client):
 def test_settings_and_people(client, ctx):
     login(client)
     s = client.get("/api/settings").json()
-    assert s["exit_state"] == "automatic" and s["people"] == ["Albert"] and s["mode"] == "shadow"
+    assert s["exit_state"] == "automatic" and s["people"] == ["albert"] and s["mode"] == "shadow"
     assert client.post("/api/settings", json={"exit_state": "parada"}).status_code == 423
     client.post("/api/lock/take")
     assert client.post("/api/settings", json={"exit_state": "parada"}).status_code == 200
     assert client.post("/api/settings", json={"exit_state": "volando"}).status_code == 422
     assert ctx.config.get("exit_state") == "parada"
-    assert client.post("/api/people", json={"name": "Roger", "pin": "5678"}).status_code == 200
-    assert client.get("/api/settings").json()["people"] == ["Albert", "Roger"]
+    assert client.post("/api/people", json={"name": "roger", "pin": "5678"}).status_code == 200
+    assert client.get("/api/settings").json()["people"] == ["albert", "roger"]
     assert client.delete("/api/people/Roger").status_code == 200
     assert client.delete("/api/people/Albert").status_code == 409        # cannot remove yourself
 

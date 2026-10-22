@@ -60,7 +60,7 @@
       "title": "Entrar y leer la barra de arriba",
       "steps": [
         "Abrir en el navegador http://<IP del PC del laboratorio>:8050. En el propio PC: el acceso directo «Panel RCE».",
-        "Escribir el nombre y el PIN o contraseña (de 4 a 32 caracteres: letras, números y símbolos). La primera persona solo se puede crear desde el PC del laboratorio.",
+        "Escribir el usuario de la UdL (el correo sin @udl.cat, p. ej. nombre.apellido) y el PIN o contraseña (de 4 a 32 caracteres: letras, números y símbolos). La primera persona solo se puede crear desde el PC del laboratorio.",
         "Para hacer cambios, pulsar «Tomar el mando». Al terminar, «Soltar el mando»."
       ],
       "kv": [
@@ -944,7 +944,7 @@
         ],
         [
           "Personas",
-          "Añadir a alguien o cambiarle el PIN."
+          "Dar de alta a alguien (usuario de la UdL sin @udl.cat) o cambiarle el PIN."
         ],
         [
           "Otros",

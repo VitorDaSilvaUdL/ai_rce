@@ -355,7 +355,7 @@
       <h2>Personas</h2>
       <ul id="people" class="people"></ul>
       <form id="people-form" class="form row">
-        <input type="text" id="p-name" placeholder="Nombre" required>
+        <input type="text" id="p-name" placeholder="Usuario (correo sin @udl.cat)" required>
         <input type="password" id="p-pin" placeholder="PIN o contraseña (4 a 32)" minlength="4" maxlength="32" autocomplete="new-password" required>
         <button class="btn" type="submit">Añadir o cambiar PIN</button>
       </form>
@@ -372,8 +372,8 @@
   <div class="dialog">
     <h1>Panel RCE</h1>
     <form id="login-form" class="form">
-      <p id="login-msg" class="muted">Entra con tu nombre y tu PIN o contraseña.</p>
-      <label>Nombre <input type="text" id="login-name" autocomplete="username" required></label>
+      <p id="login-msg" class="muted">Entra con tu usuario de la UdL (el correo sin @udl.cat) y tu PIN o contraseña.</p>
+      <label>Usuario <input type="text" id="login-name" autocomplete="username" placeholder="correo de la UdL sin @udl.cat" required></label>
       <label>PIN o contraseña <input type="password" id="login-pin" minlength="4" maxlength="32" autocomplete="current-password" required></label>
       <button class="btn ok huge" type="submit" id="login-btn">Entrar</button>
       <div id="login-error" class="error"></div>

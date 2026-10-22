@@ -49,7 +49,7 @@
     const r = await api("/api/me");
     me = r.name;
     if (!r.people_exist) {
-      $("#login-msg").textContent = "Todavía no hay nadie dado de alta. Crea la primera persona (solo desde el PC del panel): nombre y PIN o contraseña de 4 a 32 caracteres (letras, números y símbolos).";
+      $("#login-msg").textContent = "Todavía no hay nadie dado de alta. Crea la primera persona (solo desde el PC del panel): usuario de la UdL (el correo sin @udl.cat) y PIN o contraseña de 4 a 32 caracteres (letras, números y símbolos).";
       $("#login-btn").textContent = "Crear y entrar"; $("#login-form").dataset.setup = "1";
       showLogin();
       return false;

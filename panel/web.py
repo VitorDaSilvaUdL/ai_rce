@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 import json
 
 from panel import alerts, dryrun, plc_ops, readers, simfull, simulator, wincc
-from panel.auth import Lock, People, Sessions
+from panel.auth import Lock, People, Sessions, user_id
 from panel.config import EXIT_STATES
 from panel.journal import Actions, Diary, DIARY_KINDS, OPERATIONS
 from sc import state_io
@@ -259,12 +259,12 @@ def create_app(ctx: PanelContext) -> FastAPI:
         if request.client.host not in ctx.local_hosts:
             raise HTTPException(403, "La primera persona solo se crea desde el propio PC del panel")
         check_pin(body.pin)
-        ctx.people.add(body.name.strip(), body.pin)
+        ctx.people.add(user_id(body.name), body.pin)
         return {"ok": True, "people": ctx.people.names()}
 
     @app.post("/api/login")
     def login(body: Credentials, request: Request, response: Response):
-        name = body.name.strip()
+        name = user_id(body.name)
         if not ctx.people.verify(name, body.pin):
             raise HTTPException(401, "Nombre o PIN incorrectos")
         token = ctx.sessions.create(name, host=request.client.host)
@@ -606,14 +606,15 @@ def create_app(ctx: PanelContext) -> FastAPI:
         u = require_user(request)
         require_lock(u)
         check_pin(body.pin)
-        ctx.people.add(body.name.strip(), body.pin)
-        log_action(u, f"people:add:{body.name.strip()}")
+        ctx.people.add(user_id(body.name), body.pin)
+        log_action(u, f"people:add:{user_id(body.name)}")
         return {"ok": True, "people": ctx.people.names()}
 
     @app.delete("/api/people/{name}")
     def delete_people(name: str, request: Request):
         u = require_user(request)
         require_lock(u)
+        name = user_id(name)
         if name == u["name"]:
             raise HTTPException(409, "No puedes borrarte a ti mismo")
         ctx.people.remove(name)
