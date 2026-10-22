@@ -222,3 +222,33 @@ def test_run_cycle_in_shadow_logs_what_would_be_applied(tmp_path, monkeypatch):
     assert (row["plc_state_before"], row["plc_state"]) == ("ColdMode1", "HeatMode1")
     assert (row["cover"], row["cover_open"]) == ("closed", "0")
     assert plc.get_system_state()[0] == "HeatMode1"
+
+
+# ----------------------------------------------------------------------------------------------- panel orders between cycles
+def test_panel_orders_apply_between_cycles_without_waiting_for_the_next_one(tmp_path, monkeypatch):
+    """The schedule and the dry-run «apply» set a virtual state in control.json: the control applies it within seconds
+    and updates status.json (state, cover, pumps, pause), keeping the times of its last cycle."""
+    import sc.main as main
+    from sc import state_io
+    monkeypatch.setattr(main, "_last_set_state_seq", 0)
+    plc = PLCShadow(initial_state="Parada", schedule=SCHEDULE)
+    state_io.write_status(tmp_path, {"cycle_time": "2026-10-22 21:00:00", "next_cycle_time": "2026-10-22 21:15:00",
+                                     "plc_state": "Parada", "plc_mode": "parada", "cover": "closed", "paused": False})
+    assert main.apply_panel_orders(plc, tmp_path) is False                 # nothing new
+    state_io.write_control(tmp_path, set_state="ColdMode1", set_state_seq=1, paused=True, paused_by="agenda")
+    assert main.apply_panel_orders(plc, tmp_path) is True
+    assert plc.get_system_state()[0] == "ColdMode1"
+    st = state_io.read_status(tmp_path)
+    assert (st["plc_state"], st["plc_mode"], st["cover"], st["paused"], st["paused_by"]) == ("ColdMode1", "cold", "open", True, "agenda")
+    assert st["pumps"]["b2"] == "on" and st["next_cycle_time"] == "2026-10-22 21:15:00"
+    assert main.apply_panel_orders(plc, tmp_path) is False                 # applied once per sequence number
+
+
+def test_panel_orders_are_ignored_in_real_mode(tmp_path, monkeypatch):
+    import sc.main as main
+    from sc import state_io
+    monkeypatch.setattr(main, "_last_set_state_seq", 0)
+    plc = PLCShadow(initial_state="Parada", schedule=SCHEDULE)
+    monkeypatch.setattr(plc, "execution", "real")
+    state_io.write_control(tmp_path, set_state="ColdMode1", set_state_seq=5)
+    assert main.apply_panel_orders(plc, tmp_path) is False and plc.state == "Parada"

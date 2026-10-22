@@ -3,7 +3,7 @@ import os
 import random
 import json
 from datetime import datetime, timedelta
-from time import sleep
+from time import sleep, time
 import csv
 from sc.logger import get_logger
 from sc.utils.data_transform import fmt_joules 
@@ -533,19 +533,53 @@ def build_status(plc, now, estado_actual, nuevo_estado, applied_state, control, 
     }
 
 
+def apply_panel_orders(plc, state_dir=state_io.STATE_DIR):
+    """Órdenes del panel entre ciclos (solo sombra): el estado virtual de control.json se aplica una vez por
+    set_state_seq y status.json se actualiza al momento (estado, tapa, bombas, pausa), sin tocar las horas del último
+    ciclo. Devuelve True si ha aplicado algo."""
+    global _last_set_state_seq
+    if plc.execution != "shadow":
+        return False
+    control = state_io.read_control(state_dir)
+    seq = int(control.get("set_state_seq") or 0)
+    if not control.get("set_state") or seq == _last_set_state_seq:
+        return False
+    logger.info(f"PANEL: estado virtual fijado a {control['set_state']} (seq {seq})")
+    plc.state = control["set_state"]
+    _last_set_state_seq = seq
+    try:
+        status = state_io.read_status(state_dir) or {}
+        out = cycle_log.state_outputs(plc.state, alarm=plc.alarm_active)
+        status.update({
+            "written_at": datetime.now().replace(microsecond=0).isoformat(sep=" "),
+            "plc_state": plc.state, "plc_mode": out["plc_mode"], "cover": out["cover"],
+            "pumps": {"b1": out["pump_b1"], "b2": out["pump_b2"], "ev1": out["ev1"], "ev2": out["ev2"]},
+            "paused": bool(control.get("paused")), "paused_by": control.get("paused_by", ""),
+        })
+        state_io.write_status(state_dir, status)
+    except Exception:
+        logger.exception("Error actualizando status.json tras una orden del panel")
+    return True
+
+
+def wait_next_cycle(plc, seconds, state_dir=state_io.STATE_DIR, poll=10):
+    """Espera hasta el siguiente ciclo atendiendo cada `poll` segundos las órdenes del panel."""
+    end = time() + seconds
+    while time() < end:
+        sleep(min(poll, max(0.0, end - time())))
+        try:
+            apply_panel_orders(plc, state_dir)
+        except Exception:
+            logger.exception("Error aplicando órdenes del panel")
+
+
 def run_cycle(plc, out_path=OUTPUT_CSV_PATH, state_dir=state_io.STATE_DIR):
     """Un ciclo de control: decisión de la IA, nuevo estado del PLC (aplicado o, en modo sombra,
     solo simulado), una fila en dades.csv y state/status.json para el panel.
     state/control.json (escrito por el panel) puede pausar la aplicación o, en sombra, fijar el estado virtual."""
-    global _last_set_state_seq
+    # 0) Órdenes del panel pendientes: estado virtual (solo sombra), una vez por set_state_seq
+    apply_panel_orders(plc, state_dir)
     control = state_io.read_control(state_dir)
-
-    # 0) Órdenes del panel: estado virtual (solo sombra), una vez por set_state_seq
-    seq = int(control.get("set_state_seq") or 0)
-    if plc.execution == "shadow" and control.get("set_state") and seq != _last_set_state_seq:
-        logger.info(f"PANEL: estado virtual fijado a {control['set_state']} (seq {seq})")
-        plc.state = control["set_state"]
-        _last_set_state_seq = seq
 
     # 1) Obtener decision de la logica de control
     respuesta_nn = get_decision()
@@ -710,6 +744,5 @@ if __name__ == '__main__':
 
         run_cycle(plc)
 
-        # Espera entre iteraciones del bucle de control
-        sleep(60*15)  # version normal cada 15 minutos
-        # sleep(5)        # version rapida para pruebas
+        # Espera entre iteraciones del bucle de control (15 min), atendiendo mientras las órdenes del panel
+        wait_next_cycle(plc, 60 * int(ITER_TIME_SEC))
