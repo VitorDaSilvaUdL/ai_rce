@@ -53,6 +53,7 @@ def main():
                               decisions=lambda since: __import__("panel.readers", fromlist=["read_decisions"]).read_decisions(ctx.dades_path, since),
                               diary=ctx.diary, mode=lambda: ctx.mode, probe=lambda: ctx.probe_cached(55))
     ctx.collector.run_in_thread()
+    ctx.scheduler.run_in_thread(interval_s=15)
     if ctx.config.get("autostart"):
         ctx.supervisor.start()
     ctx.supervisor.run_in_thread(interval_s=5)

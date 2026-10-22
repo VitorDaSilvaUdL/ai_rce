@@ -3,6 +3,7 @@ against temporary folders and a fake supervisor. All /api routes except setup, l
 commands and settings need the command lock («Tomar el mando»)."""
 import socket
 import subprocess
+import threading
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -15,6 +16,7 @@ from pydantic import BaseModel, Field
 
 import json
 
+from panel import agenda as agenda_mod
 from panel import alerts, dryrun, plc_ops, readers, simfull, simulator, wincc
 from panel.auth import ADMIN, VIEWER, Lock, People, Sessions, role_of, user_id
 from panel.journal import ACTIONS_HEADER, CATEGORIES, category_of
@@ -68,6 +70,29 @@ class PanelContext:
         self.actions = Actions(self.state_dir / "acciones.csv")
         self.set_state_seq = int(state_io.read_control(self.state_dir).get("set_state_seq") or 0)
         self._cache = {}
+        # schedule (agenda): shadow entries change the virtual state; real ones (rce_admin) run PLC jobs
+        self.agenda = agenda_mod.Agenda(self.state_dir / "agenda.json")
+        self.scheduler = agenda_mod.Scheduler(
+            self.agenda,
+            executors={"shadow": agenda_mod.ShadowExecutor(self.state_dir, next_seq=self.next_seq),
+                       "real": agenda_mod.RealExecutor(self.state_dir, jobs=self.jobs, plc_factory=lambda: self.plc_factory(),
+                                                       probe=lambda: self.probe())},
+            mode=lambda: self.mode,
+            audit=lambda author, action, result: self.actions.add(author=author, action=action, mode=self.mode,
+                                                                  result=result, host="agenda"),
+            trial=self._agenda_trial)
+
+    def next_seq(self):
+        self.set_state_seq += 1
+        return self.set_state_seq
+
+    def _agenda_trial(self, kind, text, author):
+        self.diary.add(author=author, kind=kind, text=text, host="agenda", operation="manual" if kind == "ensayo_inicio" else "")
+        if self.collector is not None:
+            try:
+                self.collector.run_once()
+            except Exception:
+                pass
 
     def _http_predict(self, samples):
         """POST the 24-sample window to the prediction API (the same call the control makes)."""
@@ -124,6 +149,15 @@ class Credentials(BaseModel):
 def check_pin(pin):
     if not pin.strip():
         raise HTTPException(422, "El PIN o contraseña no puede ser solo espacios (4 a 32 caracteres)")
+
+
+class AgendaRequest(BaseModel):
+    kind: str                         # "estado" | "mando"
+    target: str                       # state (ColdMode1...) or command (open_cover...)
+    start: Optional[str] = None       # AAAA-MM-DDTHH:MM; empty = now (state)
+    end: Optional[str] = None         # state only
+    at_end: str = "control"
+    trial: bool = True
 
 
 class DryRunRequest(BaseModel):
@@ -320,6 +354,22 @@ def create_app(ctx: PanelContext) -> FastAPI:
         return {"ok": True}
 
     # --- status
+    def _agenda_summary():
+        entries = ctx.agenda.entries()
+        running = next((e for e in entries if e["kind"] == "estado" and e["status"] == "en_curso"), None)
+        pending = sorted((e for e in entries if e["status"] == "pendiente"), key=lambda e: e["start"])
+        return {"running": running, "next": pending[0] if pending else None, "pending": len(pending)}
+
+    def _agenda_alerts(now):
+        out = []
+        for e in ctx.agenda.entries():
+            when = readers.parse_ts(e.get("started_at") or e.get("ended_at") or e["start"])
+            if e["status"] == "fallida" and when and now - when < timedelta(hours=12):
+                out.append({"id": f"agenda:{e['id']}", "level": "warning",
+                            "title": f"Agenda: no se pudo ejecutar «{e['label']}» ({e['start'][11:16]})",
+                            "action": "Revisar la pestaña Agenda", "detail": e.get("message", "")})
+        return out
+
     def build_status(user):
         now = datetime.now()
         rs = ctx.readings(hours=ctx.config.get("readings_hours"))
@@ -376,7 +426,8 @@ def create_app(ctx: PanelContext) -> FastAPI:
             "lock": _lock_dict(ctx.lock.holder()), "supervisor": sup,
             "wincc": {"last_write": _iso(wincc_last), "age_s": wincc_age, "folder": str(ctx.wincc_dir)},
             "control": status, "heartbeat_age_s": hb, "filebeat": fb, "lights": lights,
-            "readings": readings, "alerts": [a.as_dict() for a in active],
+            "readings": readings, "alerts": [a.as_dict() for a in active] + _agenda_alerts(now),
+            "agenda": _agenda_summary(),
             "refresh_s": ctx.config.get("refresh_s"), "plc": plc, "job": ctx.jobs.status(),
             "plc_ip": ctx.plc["ip"], "trial": ctx.diary.open_trial_info(),
             "collector": ({"last_run": _iso(ctx.collector.last_run), "last_error": ctx.collector.last_error}
@@ -505,8 +556,7 @@ def create_app(ctx: PanelContext) -> FastAPI:
         result["simulated"] = True
         result["applied"] = False
         if body.apply and ctx.mode == "shadow" and result["state_after"]:
-            ctx.set_state_seq += 1
-            state_io.write_control(ctx.state_dir, set_state=result["state_after"], set_state_seq=ctx.set_state_seq)
+            state_io.write_control(ctx.state_dir, set_state=result["state_after"], set_state_seq=ctx.next_seq())
             result["applied"] = True
             cover_es = {"open": "abierta", "closed": "cerrada"}.get(result["cover_after"], result["cover_after"])
             ctx.diary.add(author=u["name"], kind="mando", host=u.get("host", ""),
@@ -607,6 +657,62 @@ def create_app(ctx: PanelContext) -> FastAPI:
             except Exception:
                 pass
         return row
+
+    # --- schedule (agenda)
+    def _parse_local(s, what):
+        if not s:
+            return None
+        t = readers.parse_ts(s) or readers.parse_ts(s + ":00")
+        if not t:
+            raise HTTPException(422, f"Fecha y hora de {what} no válidas")
+        return t
+
+    @app.get("/api/agenda")
+    def get_agenda(request: Request):
+        require_user(request)
+        entries = sorted(ctx.agenda.entries(), key=lambda e: (e["status"] not in ("en_curso", "pendiente"), e["start"]))
+        return {"entries": entries, "states": agenda_mod.STATES, "at_end": agenda_mod.AT_END, "status_labels": agenda_mod.STATUS,
+                "commands": {k: v[0] for k, v in dryrun.COMMANDS.items()}, "mode": ctx.mode, "now": _iso(datetime.now())}
+
+    @app.post("/api/agenda")
+    def post_agenda(body: AgendaRequest, request: Request):
+        u = require_user(request)
+        require_writer(u)
+        require_lock(u)
+        start, end = _parse_local(body.start, "inicio"), _parse_local(body.end, "fin")
+        try:
+            if body.kind == "estado":
+                e = ctx.agenda.add_state(u["name"], body.target, start, end, at_end=body.at_end, trial=body.trial)
+            elif body.kind == "mando":
+                e = ctx.agenda.add_command(u["name"], body.target, start)
+            else:
+                raise ValueError("Tipo de entrada desconocido")
+        except ValueError as exc:
+            raise HTTPException(422, str(exc))
+        span = f"{e['start'][:16]}" + (f" – {e['end'][:16]}" if e.get("end") else "")
+        log_action(u, f"agenda:crear:#{e['id']} {e['label']} {span}")
+        # an entry that starts now begins right away; in REAL mode the PLC job can take a minute: do not block the request
+        if ctx.mode == "real":
+            threading.Thread(target=ctx.scheduler.tick, name="agenda-now", daemon=True).start()
+        else:
+            ctx.scheduler.tick()
+        return ctx.agenda.get(e["id"])
+
+    @app.post("/api/agenda/{entry_id}/cancel")
+    def cancel_agenda(entry_id: int, request: Request):
+        u = require_user(request)
+        require_writer(u)
+        require_lock(u)
+        e = ctx.agenda.get(entry_id)
+        if not e:
+            raise HTTPException(404, "No existe esa entrada")
+        if e["author"] != u["name"] and role_of(u["name"]) != "admin":
+            raise HTTPException(403, f"Solo quien la creó ({e['author']}) o {ADMIN} pueden cancelarla")
+        try:
+            ctx.scheduler.cancel(entry_id, u["name"])
+        except ValueError as exc:
+            raise HTTPException(409, str(exc))
+        return ctx.agenda.get(entry_id)
 
     @app.get("/api/actions")
     def get_actions(request: Request, n: int = 50):
