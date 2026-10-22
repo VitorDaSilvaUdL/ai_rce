@@ -161,6 +161,16 @@ responde y de que ningún otro programa está conectado), mandos reales como tra
 (`panel/plc_ops.py`; exigen el mando tomado y el control en pausa) y estado de salida configurable al volver a SOMBRA.
 Probado contra `sc/plc_dummy.py` (PLC Snap7 simulado); en el laboratorio solo con autorización del equipo.
 
+**Cuentas y perfiles.** El usuario es el correo de la UdL sin `@udl.cat` (se acepta también con el dominio y en
+mayúsculas). Tres perfiles, según el nombre: `rce_admin` (superadministración: personas, contraseñas de otros, ajustes,
+contraseña y activación del modo REAL, mandos reales), `rce_viewer` (cuenta compartida que solo mira y usa el
+simulador) y el equipo (todos los demás: mando, mandos en seco, pausa, diario, arrancar y parar). La primera cuenta
+que se crea es `rce_admin`, solo desde el propio PC del panel. El equipo se da de alta con
+`python -m panel.import_users <fichero>` (un usuario o correo por línea): la contraseña inicial es el propio usuario y
+el panel obliga a cambiarla en la primera entrada; lo mismo cuando `rce_admin` pone una contraseña a otra persona
+(salvo `rce_viewer`). Cada persona cambia la suya en Ajustes → «Cambiar mi contraseña». La API comprueba el perfil en
+cada petición.
+
 **Contraseña del modo REAL.** Activar REAL exige, además del mando y de las dos confirmaciones («¿Estás seguro?» y
 escribir `REAL`), la contraseña del modo REAL. Recién instalado el panel no hay contraseña y la activación se rechaza
 (403). La contraseña se define o cambia en Ajustes **solo desde el propio PC del laboratorio** (localhost), con el mando

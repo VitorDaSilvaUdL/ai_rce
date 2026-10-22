@@ -14,7 +14,8 @@
   const ACT_ES = {on: "en marcha", off: "parada", auto: "automático", "": "?"};
   const LIGHT_TXT = {ok: "en orden", bad: "problema", stopped: "parado", missing: "no instalado", unknown: "sin datos"};
 
-  let me = null, status = null, refreshTimer = null, cycleTimer = null, charts = {};
+  let me = null, role = null, status = null, refreshTimer = null, cycleTimer = null, charts = {};
+  const ROLE_ES = {admin: "superadministración", team: "equipo", viewer: "solo visualización"};
 
   // ------------------------------------------------------------------ http
   async function api(path, opts) {
@@ -47,26 +48,55 @@
   }
   async function checkSession() {
     const r = await api("/api/me");
-    me = r.name;
-    if (!r.people_exist) {
-      $("#login-msg").textContent = "Todavía no hay nadie dado de alta. Crea la primera persona (solo desde el PC del panel): usuario de la UdL (el correo sin @udl.cat) y PIN o contraseña de 4 a 32 caracteres (letras, números y símbolos).";
-      $("#login-btn").textContent = "Crear y entrar"; $("#login-form").dataset.setup = "1";
+    me = r.name; role = r.role;
+    if (!r.admin_exists) {
+      $("#login-msg").textContent = "Primero hay que crear la cuenta de superadministración rce_admin (solo desde el PC del panel), con una contraseña de 4 a 32 caracteres.";
+      $("#login-name").value = "rce_admin"; $("#login-name").readOnly = true;
+      $("#login-btn").textContent = "Crear rce_admin y entrar"; $("#login-form").dataset.setup = "1";
       showLogin();
       return false;
     }
     if (!me) { showLogin(); return false; }
     $("#login").hidden = true;
     $("#user-chip").textContent = me;
+    if (r.must_change) { showPwChange(true); return false; }
+    applyRole();
     return true;
   }
+  function applyRole() {
+    document.body.dataset.role = role || "";
+    $("#btn-lock").hidden = role === "viewer";
+  }
+  function showPwChange(forced, current) {
+    $("#pwchange").hidden = false; $("#pwchange-error").textContent = "";
+    $("#pwchange-msg").textContent = forced
+      ? "Es tu primera entrada (o te han puesto una contraseña nueva): elige tu contraseña para seguir. De 4 a 32 caracteres y distinta de tu usuario."
+      : "Elige una contraseña nueva (de 4 a 32 caracteres; distinta de tu usuario).";
+    $("#pwc-current").value = current || ""; $("#pwc-new").value = ""; $("#pwc-new2").value = "";
+    $("#pwc-cancel").hidden = !!forced;
+    $("#pwchange").dataset.forced = forced ? "1" : "";
+    (current ? $("#pwc-new") : $("#pwc-current")).focus();
+  }
+  $("#pwc-cancel").addEventListener("click", () => { $("#pwchange").hidden = true; });
+  $("#pwchange-form").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    if ($("#pwc-new").value !== $("#pwc-new2").value) { $("#pwchange-error").textContent = "Las dos contraseñas nuevas no coinciden"; return; }
+    try {
+      await post("/api/password", {current: $("#pwc-current").value, new: $("#pwc-new").value});
+      const forced = $("#pwchange").dataset.forced; $("#pwchange").hidden = true; toast("Contraseña cambiada", "ok");
+      if (forced) { applyRole(); start(); }
+    } catch (e) { $("#pwchange-error").textContent = e.message; }
+  });
   $("#login-form").addEventListener("submit", async (ev) => {
     ev.preventDefault();
     const name = $("#login-name").value.trim(), pin = $("#login-pin").value;
     $("#login-error").textContent = "";
     try {
-      if ($("#login-form").dataset.setup) { await post("/api/setup", {name, pin}); delete $("#login-form").dataset.setup; $("#login-btn").textContent = "Entrar"; }
-      await post("/api/login", {name, pin});
-      $("#login").hidden = true; me = name; $("#user-chip").textContent = me;
+      if ($("#login-form").dataset.setup) { await post("/api/setup", {name, pin}); delete $("#login-form").dataset.setup; $("#login-btn").textContent = "Entrar"; $("#login-name").readOnly = false; }
+      const r = await post("/api/login", {name, pin});
+      $("#login").hidden = true; me = r.name; role = r.role; $("#user-chip").textContent = me;
+      if (r.must_change) { showPwChange(true, pin); return; }
+      applyRole();
       start();
     } catch (e) { $("#login-error").textContent = e.message; }
   });
@@ -150,8 +180,9 @@
       $("#plan").textContent = `Plan: demanda pendiente ${fmtNum((p.target_demand_j || 0) / 3.6e6, 2)} kWh · franjas elegidas: ${(p.selected_frames || []).length} · producción prevista del plan: ${fmtNum((p.predicted_production_j || 0) / 3.6e6, 2)} kWh`;
     } else { $("#decision").textContent = "El control todavía no ha decidido nada."; $("#plan").textContent = ""; }
     const w = s.supervisor.wanted;
-    $("#btn-start").disabled = w; $("#btn-stop").disabled = !w; $("#btn-restart").disabled = !w;
-    $("#btn-fb-restart").hidden = s.lights.filebeat !== "bad";
+    const viewer = role === "viewer";
+    $("#btn-start").disabled = w || viewer; $("#btn-stop").disabled = !w || viewer; $("#btn-restart").disabled = !w || viewer;
+    $("#btn-fb-restart").hidden = s.lights.filebeat !== "bad" || viewer;
     $("#sup-info").textContent = w ? `Sistema en marcha desde ${fmtTs(s.supervisor.wanted_since)} · predicción ${s.supervisor.api.running ? "activa" : "parada"} (${s.supervisor.api.restarts} reinicios) · control ${s.supervisor.sc.running ? "activo" : "parado"} (${s.supervisor.sc.restarts} reinicios)` : "Sistema parado";
     const ul = $("#alerts");
     ul.innerHTML = s.alerts.length ? s.alerts.map((a) => `<li class="${a.level}"><span class="t">${esc(a.title)}</span><span class="a">→ ${esc(a.action)}</span>${a.detail ? `<span class="d">${esc(a.detail)}</span>` : ""}</li>`).join("") : '<li class="ok">Todo en orden</li>';
@@ -411,11 +442,18 @@
     $("#set-autostart").checked = !!s.autostart; $("#set-refresh").value = s.refresh_s; $("#set-plcread").checked = !!s.plc_read_allowed;
     const mine = status && status.lock && status.lock.name === me;
     const pwSet = !!s.real_password_set;
-    $("#btn-mode-real").disabled = !(mine && s.mode === "shadow" && pwSet); $("#btn-mode-shadow").disabled = !(mine && s.mode === "real");
-    $("#btn-mode-real").title = !pwSet ? "No hay contraseña del modo REAL" : mine ? "" : "Hace falta tener el mando";
+    const isAdmin = role === "admin";
+    $("#btn-mode-real").disabled = !(isAdmin && mine && s.mode === "shadow" && pwSet); $("#btn-mode-shadow").disabled = !(isAdmin && mine && s.mode === "real");
+    $("#btn-mode-real").title = !isAdmin ? "Solo rce_admin" : !pwSet ? "No hay contraseña del modo REAL" : mine ? "" : "Hace falta tener el mando";
     $("#set-real-note").textContent = pwSet ? "Activar REAL pide la contraseña del modo REAL además de las dos confirmaciones." : "No hay contraseña del modo REAL: hasta que se defina (abajo, desde el propio PC del laboratorio) el modo REAL no se puede activar.";
     $("#pw-current-row").style.display = pwSet ? "" : "none";
-    $("#people").innerHTML = s.people.map((p) => `<li><span>${esc(p)}</span>${p !== me ? `<button class="btn small" data-del="${esc(p)}">Quitar</button>` : "<span class='muted'>tú</span>"}</li>`).join("");
+    const admin = role === "admin";
+    $("#my-account").textContent = `${me} · ${ROLE_ES[role] || role}`;
+    $("#btn-my-password").hidden = role === "viewer";
+    $("#people-note").textContent = admin ? "Al dar de alta a alguien o cambiarle la contraseña, tendrá que cambiarla en su próxima entrada (salvo rce_viewer, que es compartida)." : "Solo rce_admin da de alta personas y cambia contraseñas de otros. La tuya: «Cambiar mi contraseña».";
+    $("#people-form").hidden = !admin;
+    ["#btn-settings-save", "#btn-real-password"].forEach((id) => { $(id).disabled = !admin; $(id).title = admin ? "" : "Solo rce_admin"; });
+    $("#people").innerHTML = s.people.map((p) => `<li><span>${esc(p)}</span>${p === me ? "<span class='muted'>tú</span>" : admin ? `<button class="btn small" data-del="${esc(p)}">Quitar</button>` : ""}</li>`).join("");
     $$("#people [data-del]").forEach((b) => b.addEventListener("click", async () => { if (confirm(`¿Quitar a ${b.dataset.del}?`)) { try { await api(`/api/people/${encodeURIComponent(b.dataset.del)}`, {method: "DELETE"}); loadSettings(); } catch (e) {} } }));
     $("#info").innerHTML = [["Este PC", s.host], ["Carpeta de WinCC", s.wincc_dir], ["Dirección del panel", `http://${location.host}`], ["API de predicción", s.api_url]].map(([k, v]) => `<b>${esc(k)}</b><span>${esc(v)}</span>`).join("");
   }
@@ -455,6 +493,7 @@
     if (!confirm(`¿Volver a SOMBRA?\n\nEl control dejará de escribir en el PLC y este quedará en: ${$("#set-exit").selectedOptions[0] ? $("#set-exit").selectedOptions[0].textContent : "estado de salida"}.`)) return;
     try { const r = await post("/api/mode", {mode: "shadow"}); toast(r.ok ? "Modo SOMBRA activado; PLC en estado de salida" : "SOMBRA activado, pero el estado de salida falló: revisa el PLC", r.ok ? "ok" : "bad"); await loadStatus(); loadSettings(); } catch (e) {}
   });
+  $("#btn-my-password").addEventListener("click", () => showPwChange(false));
   $("#people-form").addEventListener("submit", async (ev) => {
     ev.preventDefault();
     try { await post("/api/people", {name: $("#p-name").value.trim(), pin: $("#p-pin").value}); $("#p-name").value = ""; $("#p-pin").value = ""; toast("Persona guardada", "ok"); loadSettings(); } catch (e) {}

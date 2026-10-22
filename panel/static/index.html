@@ -352,7 +352,10 @@
       <div class="row"><button class="btn ok" id="btn-settings-save">Guardar ajustes</button></div>
     </div>
     <div class="card">
+      <h2>Mi cuenta</h2>
+      <div class="row"><span id="my-account" class="muted"></span><button class="btn small" id="btn-my-password">Cambiar mi contraseña</button></div>
       <h2>Personas</h2>
+      <p class="muted" id="people-note"></p>
       <ul id="people" class="people"></ul>
       <form id="people-form" class="form row">
         <input type="text" id="p-name" placeholder="Usuario (correo sin @udl.cat)" required>
@@ -377,6 +380,21 @@
       <label>PIN o contraseña <input type="password" id="login-pin" minlength="4" maxlength="32" autocomplete="current-password" required></label>
       <button class="btn ok huge" type="submit" id="login-btn">Entrar</button>
       <div id="login-error" class="error"></div>
+    </form>
+  </div>
+</div>
+
+<!-- ===================================================== CAMBIO DE CONTRASEÑA -->
+<div id="pwchange" class="overlay" hidden>
+  <div class="dialog">
+    <h1>Cambiar la contraseña</h1>
+    <form id="pwchange-form" class="form">
+      <p id="pwchange-msg" class="muted">Elige una contraseña nueva (de 4 a 32 caracteres; distinta de tu usuario).</p>
+      <label>Contraseña actual <input type="password" id="pwc-current" autocomplete="current-password" required></label>
+      <label>Nueva <input type="password" id="pwc-new" minlength="4" maxlength="32" autocomplete="new-password" required></label>
+      <label>Repetir la nueva <input type="password" id="pwc-new2" minlength="4" maxlength="32" autocomplete="new-password" required></label>
+      <div class="row"><button class="btn ok huge" type="submit">Guardar</button><button class="btn" type="button" id="pwc-cancel">Cancelar</button></div>
+      <div id="pwchange-error" class="error"></div>
     </form>
   </div>
 </div>

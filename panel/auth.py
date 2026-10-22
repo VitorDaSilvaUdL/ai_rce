@@ -11,6 +11,15 @@ def _hash(salt, pin):
     return hashlib.sha256((salt + str(pin)).encode("utf-8")).hexdigest()
 
 
+ADMIN, VIEWER = "rce_admin", "rce_viewer"
+
+
+def role_of(name):
+    """Profile from the user name: rce_admin (superadmin), rce_viewer (read only) or team (everybody else)."""
+    n = user_id(name)
+    return "admin" if n == ADMIN else "viewer" if n == VIEWER else "team"
+
+
 def user_id(name):
     """User name = university e-mail without @udl.cat, lower case («Vitor.DaSilva@udl.cat» -> «vitor.dasilva»)."""
     n = str(name or "").strip().lower()
@@ -36,14 +45,35 @@ class People:
     def names(self):
         return [p["name"] for p in self._load().get("people", [])]
 
-    def add(self, name, pin):
+    def add(self, name, pin, must_change=False):
+        """Add a person or set a new PIN. must_change: the person has to change it at the next login."""
         name = user_id(name)
         data = self._load()
         people = [p for p in data.get("people", []) if user_id(p["name"]) != name]
         salt = secrets.token_hex(8)
-        people.append({"name": name, "salt": salt, "hash": _hash(salt, pin)})
+        people.append({"name": name, "salt": salt, "hash": _hash(salt, pin), "must_change": bool(must_change)})
         data["people"] = people
         self._save(data)
+
+    def must_change(self, name):
+        name = user_id(name)
+        return any(user_id(p["name"]) == name and p.get("must_change") for p in self._load().get("people", []))
+
+    def import_users(self, lines):
+        """One user per line (university e-mail or user name; blank lines and # comments ignored). New users get their
+        own user name as initial password and must change it at the first login. Existing users are not touched."""
+        created, skipped, existing = [], [], set(self.names())
+        for line in lines:
+            line = line.split("#", 1)[0].strip()
+            if not line:
+                continue
+            name = user_id(line)
+            if name in existing or name in created:
+                skipped.append(name)
+                continue
+            self.add(name, name, must_change=True)
+            created.append(name)
+        return created, skipped
 
     def remove(self, name):
         name = user_id(name)

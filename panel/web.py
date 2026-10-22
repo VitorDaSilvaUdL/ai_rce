@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 import json
 
 from panel import alerts, dryrun, plc_ops, readers, simfull, simulator, wincc
-from panel.auth import Lock, People, Sessions, user_id
+from panel.auth import ADMIN, VIEWER, Lock, People, Sessions, role_of, user_id
 from panel.config import EXIT_STATES
 from panel.journal import Actions, Diary, DIARY_KINDS, OPERATIONS
 from sc import state_io
@@ -176,6 +176,11 @@ class ModeRequest(BaseModel):
     password: str = ""
 
 
+class PasswordChange(BaseModel):
+    current: str
+    new: str = Field(min_length=4, max_length=32)
+
+
 class RealPasswordRequest(BaseModel):
     password: str
     current: str = ""
@@ -218,11 +223,23 @@ def create_app(ctx: PanelContext) -> FastAPI:
     def user_of(request: Request):
         return ctx.sessions.get(request.cookies.get(COOKIE, ""))
 
-    def require_user(request: Request):
+    def require_user(request: Request, allow_must_change=False):
         u = user_of(request)
         if not u:
             raise HTTPException(401, "Hay que entrar con nombre y PIN")
+        if not allow_must_change and ctx.people.must_change(u["name"]):
+            raise HTTPException(403, detail={"message": "Cambia tu contraseña antes de seguir", "must_change": True})
         return u
+
+    def require_writer(user):
+        if role_of(user["name"]) == "viewer":
+            raise HTTPException(403, "La cuenta de visualización solo puede mirar")
+        return user
+
+    def require_admin(user):
+        if role_of(user["name"]) != "admin":
+            raise HTTPException(403, f"Solo {ADMIN} puede hacer esto")
+        return user
 
     def require_lock(user):
         h = ctx.lock.holder()
@@ -250,14 +267,18 @@ def create_app(ctx: PanelContext) -> FastAPI:
     def me(request: Request):
         u = user_of(request)
         return {"name": u["name"] if u else None, "people_exist": bool(ctx.people.names()),
+                "admin_exists": ADMIN in ctx.people.names(), "role": role_of(u["name"]) if u else None,
+                "must_change": ctx.people.must_change(u["name"]) if u else False,
                 "lock": _lock_dict(ctx.lock.holder()), "mode": ctx.mode, "host": request.client.host}
 
     @app.post("/api/setup")
     def setup(body: Credentials, request: Request, response: Response):
-        if ctx.people.names():
-            raise HTTPException(409, "Ya hay personas dadas de alta: entra con tu PIN")
+        if user_id(body.name) != ADMIN:
+            raise HTTPException(422, f"La primera cuenta es la de superadministración: {ADMIN}")
+        if ADMIN in ctx.people.names():
+            raise HTTPException(409, f"{ADMIN} ya existe: entra con tu usuario")
         if request.client.host not in ctx.local_hosts:
-            raise HTTPException(403, "La primera persona solo se crea desde el propio PC del panel")
+            raise HTTPException(403, f"{ADMIN} solo se crea desde el propio PC del panel")
         check_pin(body.pin)
         ctx.people.add(user_id(body.name), body.pin)
         return {"ok": True, "people": ctx.people.names()}
@@ -269,7 +290,21 @@ def create_app(ctx: PanelContext) -> FastAPI:
             raise HTTPException(401, "Nombre o PIN incorrectos")
         token = ctx.sessions.create(name, host=request.client.host)
         response.set_cookie(COOKIE, token, httponly=True, samesite="lax", max_age=12 * 3600)
-        return {"ok": True, "name": name}
+        return {"ok": True, "name": name, "role": role_of(name), "must_change": ctx.people.must_change(name)}
+
+    @app.post("/api/password")
+    def change_password(body: PasswordChange, request: Request):
+        """Each person changes their own PIN or password (mandatory at the first login of imported users)."""
+        u = require_user(request, allow_must_change=True)
+        require_writer(u)
+        if not ctx.people.verify(u["name"], body.current):
+            raise HTTPException(403, "La contraseña actual no es correcta")
+        check_pin(body.new)
+        if user_id(body.new) == u["name"] or body.new == body.current:
+            raise HTTPException(422, "La nueva contraseña no puede ser tu usuario ni la actual")
+        ctx.people.add(u["name"], body.new, must_change=False)
+        log_action(u, "password:change")
+        return {"ok": True}
 
     @app.post("/api/logout")
     def logout(request: Request, response: Response):
@@ -400,6 +435,7 @@ def create_app(ctx: PanelContext) -> FastAPI:
     @app.post("/api/system/{action}")
     def system_action(action: str, request: Request):
         u = require_user(request)
+        require_writer(u)
         if action not in ("start", "stop", "restart"):
             raise HTTPException(404, "Acción desconocida")
         getattr(ctx.supervisor, action)()
@@ -409,6 +445,7 @@ def create_app(ctx: PanelContext) -> FastAPI:
     @app.post("/api/system/restart/{name}")
     def system_restart_one(name: str, request: Request):
         u = require_user(request)
+        require_writer(u)
         if name not in ("api", "sc"):
             raise HTTPException(404, "Proceso desconocido")
         ctx.supervisor.restart_one(name)
@@ -418,6 +455,7 @@ def create_app(ctx: PanelContext) -> FastAPI:
     @app.post("/api/filebeat/restart")
     def filebeat_restart(request: Request):
         u = require_user(request)
+        require_writer(u)
         ctx.service_runner(["sc", "stop", "filebeat"])
         code = ctx.service_runner(["sc", "start", "filebeat"])
         log_action(u, "filebeat:restart", result="ok" if code == 0 else f"error {code}")
@@ -427,6 +465,7 @@ def create_app(ctx: PanelContext) -> FastAPI:
     @app.post("/api/lock/take")
     def lock_take(request: Request):
         u = require_user(request)
+        require_writer(u)
         ok, holder = ctx.lock.take(u["name"], u.get("host", ""))
         if not ok:
             raise HTTPException(423, detail={"message": f"El mando lo tiene {holder}", "lock": _lock_dict(ctx.lock.holder())})
@@ -435,6 +474,7 @@ def create_app(ctx: PanelContext) -> FastAPI:
     @app.post("/api/lock/release")
     def lock_release(request: Request):
         u = require_user(request)
+        require_writer(u)
         ctx.lock.release(u["name"])
         return {"ok": True, "lock": _lock_dict(ctx.lock.holder())}
 
@@ -442,6 +482,7 @@ def create_app(ctx: PanelContext) -> FastAPI:
     @app.post("/api/dryrun")
     def post_dryrun(body: DryRunRequest, request: Request):
         u = require_user(request)
+        require_writer(u)
         require_lock(u)
         if body.command not in dryrun.COMMANDS:
             raise HTTPException(422, "Mando desconocido")
@@ -465,6 +506,7 @@ def create_app(ctx: PanelContext) -> FastAPI:
     @app.post("/api/control/pause")
     def control_pause(body: PauseRequest, request: Request):
         u = require_user(request)
+        require_writer(u)
         require_lock(u)
         now = _iso(datetime.now())
         state_io.write_control(ctx.state_dir, paused=body.paused, paused_by=u["name"] if body.paused else "",
@@ -539,6 +581,7 @@ def create_app(ctx: PanelContext) -> FastAPI:
     @app.post("/api/diary")
     def post_diary(body: DiaryEntry, request: Request):
         u = require_user(request)
+        require_writer(u)
         if body.kind not in DIARY_KINDS:
             raise HTTPException(422, "Tipo de anotación desconocido")
         if body.operation and body.operation not in OPERATIONS:
@@ -576,6 +619,7 @@ def create_app(ctx: PanelContext) -> FastAPI:
     @app.post("/api/settings")
     def post_settings(body: Settings, request: Request):
         u = require_user(request)
+        require_admin(u)
         require_lock(u)
         fields = {k: v for k, v in body.model_dump().items() if v is not None}
         if "exit_state" in fields and fields["exit_state"] not in EXIT_STATES:
@@ -587,6 +631,7 @@ def create_app(ctx: PanelContext) -> FastAPI:
     @app.post("/api/real-password")
     def post_real_password(body: RealPasswordRequest, request: Request):
         u = require_user(request)
+        require_admin(u)
         require_lock(u)
         if request.client.host not in ctx.local_hosts:
             raise HTTPException(403, "La contraseña del modo REAL solo se define desde el propio PC del laboratorio")
@@ -604,15 +649,19 @@ def create_app(ctx: PanelContext) -> FastAPI:
     @app.post("/api/people")
     def post_people(body: Credentials, request: Request):
         u = require_user(request)
+        require_admin(u)
         require_lock(u)
         check_pin(body.pin)
-        ctx.people.add(user_id(body.name), body.pin)
-        log_action(u, f"people:add:{user_id(body.name)}")
+        name = user_id(body.name)
+        # a PIN set by the admin for someone else must be changed by that person (not the shared viewer account)
+        ctx.people.add(name, body.pin, must_change=name != u["name"] and role_of(name) != "viewer")
+        log_action(u, f"people:add:{name}")
         return {"ok": True, "people": ctx.people.names()}
 
     @app.delete("/api/people/{name}")
     def delete_people(name: str, request: Request):
         u = require_user(request)
+        require_admin(u)
         require_lock(u)
         name = user_id(name)
         if name == u["name"]:
@@ -624,6 +673,7 @@ def create_app(ctx: PanelContext) -> FastAPI:
     @app.post("/api/mode")
     def post_mode(body: ModeRequest, request: Request):
         u = require_user(request)
+        require_admin(u)
         require_lock(u)
         target = body.mode.strip().lower()
         if target not in ("real", "shadow"):
@@ -672,6 +722,7 @@ def create_app(ctx: PanelContext) -> FastAPI:
     @app.post("/api/command")
     def post_command(body: CommandRequest, request: Request):
         u = require_user(request)
+        require_admin(u)
         require_lock(u)
         if ctx.mode != "real":
             raise HTTPException(409, "En modo SOMBRA los mandos se ejecutan en seco (/api/dryrun)")
@@ -699,6 +750,7 @@ def create_app(ctx: PanelContext) -> FastAPI:
     @app.post("/api/job/abort")
     def post_job_abort(request: Request):
         u = require_user(request)
+        require_writer(u)
         require_lock(u)
         ok = ctx.jobs.abort()
         log_action(u, "job:abort", result="ok" if ok else "nothing")

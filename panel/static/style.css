@@ -156,3 +156,7 @@ a { color: var(--accent); }
 .watermark[data-wm='REAL']::after { color: rgba(180, 35, 24, .22); }
 .steps li.error { color: var(--bad); font-weight: 700; }
 [hidden] { display: none !important; }
+
+/* viewer account: forms that would write are hidden */
+body[data-role="viewer"] #trial-form button, body[data-role="viewer"] #note-form, body[data-role="viewer"] .cmd-grid,
+body[data-role="viewer"] #people-form { display: none !important; }

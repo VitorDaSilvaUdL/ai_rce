@@ -43,7 +43,7 @@
         {
           "icon": "real",
           "title": "Modo REAL",
-          "text": "El control escribe en el PLC (bombas, válvulas y tapa). Solo con la autorización del equipo."
+          "text": "El control escribe en el PLC (bombas, válvulas y tapa). Solo rce_admin y con la autorización del equipo."
         },
         {
           "icon": "lock",
@@ -60,8 +60,9 @@
       "title": "Entrar y leer la barra de arriba",
       "steps": [
         "Abrir en el navegador http://<IP del PC del laboratorio>:8050. En el propio PC: el acceso directo «Panel RCE».",
-        "Escribir el usuario de la UdL (el correo sin @udl.cat, p. ej. nombre.apellido) y el PIN o contraseña (de 4 a 32 caracteres: letras, números y símbolos). La primera persona solo se puede crear desde el PC del laboratorio.",
-        "Para hacer cambios, pulsar «Tomar el mando». Al terminar, «Soltar el mando»."
+        "Usuario: el de la UdL (el correo sin @udl.cat, p. ej. nombre.apellido). La primera vez, la contraseña es el propio usuario y el panel pide cambiarla (de 4 a 32 caracteres, distinta del usuario).",
+        "Para hacer cambios, pulsar «Tomar el mando». Al terminar, «Soltar el mando».",
+        "Perfiles: rce_viewer solo mira; el equipo usa mandos en seco, simulador, diario y arranque; rce_admin además gestiona personas, ajustes y el modo REAL."
       ],
       "kv": [
         [
@@ -913,10 +914,10 @@
       "id": "ajustes",
       "tab": "Ajustes",
       "kicker": "Ajustes",
-      "title": "Ajustes y paso a modo REAL",
+      "title": "Ajustes, cuentas y paso a modo REAL",
       "steps": [
         "Autorización del equipo.",
-        "Tomar el mando.",
+        "Entrar como rce_admin y tomar el mando.",
         "Marcar «Permitir leer el PLC en modo SOMBRA» y guardar.",
         "«Activar REAL…»: el panel lee el PLC y enseña su estado.",
         "Confirmar «¿Estás seguro?».",
@@ -939,15 +940,19 @@
       ],
       "others": [
         [
+          "Mi cuenta",
+          "Cada persona cambia su contraseña cuando quiera («Cambiar mi contraseña»)."
+        ],
+        [
+          "Personas (rce_admin)",
+          "Dar de alta o quitar a alguien, o ponerle una contraseña nueva: la cambiará en su próxima entrada."
+        ],
+        [
           "Contraseña del modo REAL",
-          "Solo se define o cambia desde el propio PC del laboratorio, con el mando; mínimo 8 caracteres; se guarda cifrada."
+          "Solo rce_admin, desde el propio PC del laboratorio; mínimo 8 caracteres; se guarda cifrada."
         ],
         [
-          "Personas",
-          "Dar de alta a alguien (usuario de la UdL sin @udl.cat) o cambiarle el PIN."
-        ],
-        [
-          "Otros",
+          "Otros (rce_admin)",
           "Arrancar el control al encender el PC; cada cuántos segundos se refresca la pantalla."
         ]
       ]
