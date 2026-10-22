@@ -8,7 +8,8 @@ a partir de ahora es el panel quien arranca la predicción y el control.
 
 Requisitos: ai_rce ya instalado con deploy\install_shadow_lab.ps1 (.venv y sc\config.prod.json en modo sombra),
 PowerShell o VS Code como administrador. Crea la tarea programada "RCE-Panel" (arranca con el PC, usuario SYSTEM),
-abre el puerto 8050 en el cortafuegos de Windows y deja el acceso directo "Panel RCE" en el escritorio público.
+abre el puerto 8050 en el cortafuegos de Windows, prepara el certificado propio del panel (HTTPS) y deja el acceso
+directo "Panel RCE" en el escritorio público.
 La primera persona (nombre y PIN) se crea desde el propio PC en la página.
 #>
 [CmdletBinding()]
@@ -29,6 +30,13 @@ function Say($m)  { Write-Host ''; Write-Host "== $m" -ForegroundColor Cyan }
 function Ok($m)   { Write-Host "   OK     $m" -ForegroundColor Green }
 function Warn($m) { Write-Host "   AVISO  $m" -ForegroundColor Yellow }
 function Die($m)  { Write-Host ''; Write-Host "ERROR: $m" -ForegroundColor Red; exit 1 }
+function Run-Logged($exe, [string[]]$argv, $log) {
+  $p = Start-Process -FilePath $exe -ArgumentList $argv -WorkingDirectory $Root -NoNewWindow -Wait -PassThru `
+         -RedirectStandardOutput $log -RedirectStandardError ($log + '.err')
+  Get-Content ($log + '.err') -ErrorAction SilentlyContinue | Add-Content $log
+  Remove-Item ($log + '.err') -ErrorAction SilentlyContinue
+  return $p.ExitCode
+}
 
 Say '1/5 Comprobaciones'
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
@@ -69,6 +77,17 @@ Get-Content ($testLog + '.err') -ErrorAction SilentlyContinue | Add-Content $tes
 if ($p.ExitCode -ne 0) { Die "Fallan tests:`n$((Get-Content $testLog -Tail 15) -join "`n")" }
 Ok (Get-Content $testLog | Where-Object { $_ -match 'passed' } | Select-Object -Last 1)
 
+$tlsLog = Join-Path $Logs 'tls.log'
+$https = (Run-Logged $VenvPy @('-m', 'panel.tls') $tlsLog) -eq 0
+if ($https) {
+  Get-Content $tlsLog | ForEach-Object { Ok $_ }
+  $fp = ((Get-Content $tlsLog | Where-Object { $_ -match 'Huella SHA-256' }) -replace '.*Huella SHA-256:\s*', '')
+} else {
+  Warn "No se ha podido preparar el certificado HTTPS (logs\tls.log): el panel arrancará en HTTP, sin cifrar."
+}
+$scheme = if ($https) { 'https' } else { 'http' }
+$chkLog = Join-Path $Logs 'panel_check.log'
+
 if ($NoTasks) {
   Say "3/5 Prueba: panel en primer plano $RunSeconds s"
   $pp = Start-Process -FilePath $VenvPy -ArgumentList '-m', 'panel.main' -WorkingDirectory $Root -WindowStyle Hidden -PassThru `
@@ -77,8 +96,9 @@ if ($NoTasks) {
     $deadline = (Get-Date).AddSeconds(60)
     do { Start-Sleep 2; $up = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue } until ($up -or (Get-Date) -gt $deadline)
     if (-not $up) { Die "El panel no escucha en $Port (logs\panel_test.err)" }
-    $r = Invoke-WebRequest -UseBasicParsing "http://localhost:$Port/api/me" -TimeoutSec 10
-    Ok "Panel responde: $($r.Content)"
+    $answer = Run-Logged $VenvPy @('-m', 'panel.tls', '--check', "$Port") $chkLog
+    if ($answer -eq 1) { Die "El panel no responde en $Port (logs\panel_test.err)" }
+    Ok "Panel responde por $(if ($answer -eq 0) { 'HTTPS' } else { 'HTTP, sin cifrar' })"
     Start-Sleep -Seconds $RunSeconds
   } finally { if (-not $pp.HasExited) { Stop-Process -Id $pp.Id -Force } }
   Write-Host ''; Write-Host 'Prueba sin tareas terminada.' -ForegroundColor Green
@@ -113,19 +133,26 @@ if (-not (Get-NetFirewallRule -DisplayName 'Panel RCE' -ErrorAction SilentlyCont
 } else { Ok 'Regla del cortafuegos ya existente' }
 $desktop = [Environment]::GetFolderPath('CommonDesktopDirectory')
 $lnk = Join-Path $desktop 'Panel RCE.url'
-[IO.File]::WriteAllText($lnk, "[InternetShortcut]`r`nURL=http://localhost:$Port/`r`n")
+[IO.File]::WriteAllText($lnk, "[InternetShortcut]`r`nURL=$($scheme)://localhost:$Port/`r`n")
 Ok "Acceso directo «Panel RCE» en $desktop"
 
 Say '5/5 Comprobación'
 $deadline = (Get-Date).AddSeconds(90)
 do { Start-Sleep 3; $up = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue } until ($up -or (Get-Date) -gt $deadline)
 if (-not $up) { Die "El panel no escucha en $Port tras 90 s. Ver logs\panel_task.log" }
-$r = Invoke-WebRequest -UseBasicParsing "http://localhost:$Port/api/me" -TimeoutSec 10
-Ok "Panel en marcha: $($r.Content)"
+$deadline = (Get-Date).AddSeconds(60)
+do { $answer = Run-Logged $VenvPy @('-m', 'panel.tls', '--check', "$Port") $chkLog; if ($answer -eq 1) { Start-Sleep 3 } } until ($answer -ne 1 -or (Get-Date) -gt $deadline)
+if ($answer -eq 1) { Die "El panel escucha en $Port pero no responde. Ver logs\panel_task.log" }
+if ($answer -eq 2) { $scheme = 'http'; Warn 'El panel responde por HTTP, SIN cifrar (logs\panel_task.log)' }
+Ok "Panel en marcha ($($scheme.ToUpper()))"
 Write-Host ''
 Write-Host 'LISTO. Panel RCE instalado.' -ForegroundColor Green
-Write-Host "  En este PC:          http://localhost:$Port  (acceso directo «Panel RCE» en el escritorio)"
-Write-Host "  Desde otros PC:      http://<IP de este PC>:$Port   ($ips)"
+Write-Host "  En este PC:          $($scheme)://localhost:$Port  (acceso directo «Panel RCE» en el escritorio)"
+Write-Host "  Desde otros PC:      $($scheme)://$($env:COMPUTERNAME):$Port o $($scheme)://<IP de este PC>:$Port   ($ips)"
+if ($scheme -eq 'https') {
+  Write-Host "  HTTPS:               certificado propio; el navegador avisará la primera vez. Huella SHA-256: $fp"
+  Write-Host "                       Para quitar el aviso: $($scheme)://$($env:COMPUTERNAME):$Port/certificado, instalarlo en «Entidades de certificación raíz de confianza»."
+}
 Write-Host '  Primer paso:         abrir el panel en este PC y crear la cuenta rce_admin'
 if ($public.Count) { Write-Host "  Aviso:               redes con perfil Público ($($public -join ', ')): desde otros PC el panel no se abrirá hasta cambiar el perfil." -ForegroundColor Yellow }
 Write-Host '  Modo REAL:           sin contraseña aún (no se puede activar). Se define en Ajustes desde este PC, con el mando.'

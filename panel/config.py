@@ -7,7 +7,7 @@ from pathlib import Path
 
 DEFAULTS = {
     "bind": "0.0.0.0", "port": 8050, "autostart": True, "exit_state": "automatic", "refresh_s": 10,
-    "api_url": "http://localhost:8000", "readings_hours": 6, "plc_read_allowed": False,
+    "api_url": "http://localhost:8000", "readings_hours": 6, "plc_read_allowed": False, "https": True,
 }
 PRIVATE_KEYS = ("people", "real_password")
 PBKDF2_ROUNDS = 200_000

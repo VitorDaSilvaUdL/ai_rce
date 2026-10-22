@@ -61,7 +61,8 @@
       "kicker": "Primeros pasos",
       "title": "Entrar y leer la barra de arriba",
       "steps": [
-        "Abrir en el navegador http://<IP del PC del laboratorio>:8050. En el propio PC: el acceso directo «Panel RCE».",
+        "Abrir en el navegador https://<nombre del PC del laboratorio>:8050 (o con su IP). En el propio PC: el acceso directo «Panel RCE».",
+        "La primera vez el navegador avisa de que la conexión no es privada: el panel usa un certificado propio. «Configuración avanzada» → «Continuar». Para que no vuelva a avisar: descargar /certificado e instalarlo en «Entidades de certificación raíz de confianza».",
         "Usuario: el de la UdL (el correo sin @udl.cat, p. ej. nombre.apellido). La primera vez, la contraseña es el propio usuario y el panel pide cambiarla (de 4 a 32 caracteres, distinta del usuario).",
         "Para hacer cambios, pulsar «Tomar el mando». Al terminar, «Soltar el mando».",
         "Perfiles: rce_viewer solo mira; el equipo usa mandos en seco, simulador, diario y arranque; rce_admin además gestiona personas, ajustes y el modo REAL."

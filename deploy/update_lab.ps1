@@ -6,8 +6,9 @@ En PowerShell como administrador, desde la carpeta de ai_rce:
   powershell -ExecutionPolicy Bypass -File deploy\update_lab.ps1              # actualiza
 
 Qué hace: para la tarea «RCE-Panel» (y con ella la predicción y el control), comprueba que no queda ningún python de
-esta carpeta, instala los paquetes, reaplica la configuración del laboratorio en modo sombra, pasa los tests, vuelve a
-registrar y arrancar «RCE-Panel», y espera a que el control escriba un ciclo nuevo en modo sombra.
+esta carpeta, instala los paquetes, reaplica la configuración del laboratorio en modo sombra, pasa los tests, prepara
+el certificado propio del panel (HTTPS, state\panel_cert.pem; la clave state\panel_key.pem no se muestra nunca), vuelve
+a registrar y arrancar «RCE-Panel», y espera a que el control escriba un ciclo nuevo en modo sombra.
 Qué no hace nunca: poner plc.mode = "real", conectar con el PLC (puerto 102), tocar WinCC o sus CSV, tocar el ai_rce
 antiguo, tocar state\control.json o state\panel_config.json, ni mostrar contraseñas.
 Para una instalación desde cero: deploy\install_shadow_lab.ps1 y después deploy\install_panel.ps1.
@@ -85,6 +86,9 @@ $tree = Show-Tree 'Procesos de esta instalación:'
 $p102 = Get-RcePort102 $Root
 if ($p102.Mine.Count -gt 0) { Die "ai_rce tiene conexiones con el puerto 102 (PLC): $($p102.Mine.Count). No debería en modo sombra: no sigas y avisa." }
 Ok ("Ninguna conexión de ai_rce con el PLC (puerto 102)" + $(if ($p102.Others.Count) { "; otras conexiones al 102 de otros programas (legítimas): $($p102.OtherNames -join ', ')" } else { '' }))
+$crypto = & $VenvPy -c "import importlib.util; print(importlib.util.find_spec('cryptography') is not None)"
+if ($crypto -eq 'True') { Ok 'Paquete cryptography (certificado HTTPS del panel) instalado' }
+else { Warn 'Falta el paquete cryptography (certificado HTTPS del panel): se instala en el paso 3' }
 $public = @(Get-RcePublicProfiles)
 if ($public.Count) {
   Warn ("Redes con perfil Público: $($public -join ', '). La regla «Panel RCE» (Dominio y Privado) no se aplica en ellas: " +
@@ -120,7 +124,7 @@ Ok 'Puertos 8000 y 8050 libres'
 Say '3/7 Paquetes'
 $req = Join-Path $Logs 'requirements-lab.txt'
 [IO.File]::WriteAllText($req, [IO.File]::ReadAllText((Join-Path $Root 'api\requirements.txt')), (New-Object Text.UTF8Encoding $false))
-Add-Content $req "python-snap7==1.4.1`r`ntqdm`r`npytest`r`nhttpx==0.28.1"
+Add-Content $req "python-snap7==1.4.1`r`ntqdm`r`npytest`r`nhttpx==0.28.1`r`ncryptography==43.0.0"
 $pipLog = Join-Path $Logs 'pip_update.log'
 if ((Run-Logged $VenvPy @('-m', 'pip', 'install', '--disable-pip-version-check', '-r', "`"$req`"") $pipLog) -ne 0) {
   Die "pip install ha fallado. Últimas líneas de logs\pip_update.log:`n$((Get-Content $pipLog -Tail 15) -join "`n")"
@@ -162,22 +166,33 @@ if (-not (Get-NetFirewallRule -DisplayName 'Panel RCE' -ErrorAction SilentlyCont
   New-NetFirewallRule -DisplayName 'Panel RCE' -Direction Inbound -Protocol TCP -LocalPort $Port -Action Allow -Profile Domain,Private | Out-Null
   Ok "Regla del cortafuegos «Panel RCE» creada (puerto $Port, redes de dominio y privadas)"
 }
-$lnk = Join-Path ([Environment]::GetFolderPath('CommonDesktopDirectory')) 'Panel RCE.url'
-if (-not (Test-Path $lnk)) {
-  [IO.File]::WriteAllText($lnk, "[InternetShortcut]`r`nURL=http://localhost:$Port/`r`n")
-  Ok 'Acceso directo «Panel RCE» creado en el escritorio público'
+$tlsLog = Join-Path $Logs 'tls.log'
+$https = (Run-Logged $VenvPy @('-m', 'panel.tls') $tlsLog) -eq 0
+if ($https) {
+  Get-Content $tlsLog | ForEach-Object { Ok $_ }
+  $fp = ((Get-Content $tlsLog | Where-Object { $_ -match 'Huella SHA-256' }) -replace '.*Huella SHA-256:\s*', '')
+} else {
+  Warn "No se ha podido preparar el certificado HTTPS (logs\tls.log): el panel arrancará en HTTP, sin cifrar."
 }
+$scheme = if ($https) { 'https' } else { 'http' }
+$lnk = Join-Path ([Environment]::GetFolderPath('CommonDesktopDirectory')) 'Panel RCE.url'
+[IO.File]::WriteAllText($lnk, "[InternetShortcut]`r`nURL=$($scheme)://localhost:$Port/`r`n")
+Ok "Acceso directo «Panel RCE» en el escritorio público: $($scheme)://localhost:$Port"
 $started = (Get-Date).AddSeconds(-2)
 Start-ScheduledTask -TaskName $Task
 $deadline = (Get-Date).AddSeconds(120)
-$me = $null
+$chkLog = Join-Path $Logs 'panel_check.log'
 do {
   Start-Sleep 3
-  try { $me = Invoke-WebRequest -UseBasicParsing "http://localhost:$Port/api/me" -TimeoutSec 5 } catch { $me = $null }
-} until ($me -or (Get-Date) -gt $deadline)
-if (-not $me) { Die "El panel no responde en http://localhost:$Port tras 120 s. Ver logs\panel_task.log" }
+  $answer = Run-Logged $VenvPy @('-m', 'panel.tls', '--check', "$Port") $chkLog
+} until ($answer -eq 0 -or $answer -eq 2 -or (Get-Date) -gt $deadline)
+if ($answer -ne 0 -and $answer -ne 2) { Die "El panel no responde en el puerto $Port tras 120 s. Ver logs\panel_task.log" }
 $script:PanelStopped = $false
-Ok "Tarea «$Task» registrada y en marcha; /api/me responde"
+if ($answer -eq 0) { Ok "Tarea «$Task» registrada y en marcha; /api/me responde por HTTPS con el certificado del panel" }
+else {
+  $scheme = 'http'
+  Warn "El panel responde por HTTP, SIN cifrar (logs\panel_task.log). Tarea «$Task» en marcha."
+}
 
 # ----------------------------------------------------------------------------------------------------------------
 Say "7/7 Primer ciclo del control (puede tardar unos minutos: se carga el modelo)"
@@ -218,6 +233,11 @@ Write-Host ''
 Write-Host 'LISTO. ai_rce y Panel RCE actualizados (MODO SOMBRA)' -ForegroundColor Green
 Write-Host 'Ninguna conexión de ai_rce con el PLC (puerto 102)' -ForegroundColor Green
 if ($p102.Others.Count) { Write-Host "  (Conexiones al 102 de otros programas, legítimas: $($p102.OtherNames -join ', '))" }
-Write-Host "  Panel:      http://localhost:$Port   ·   desde otros PC: http://<IP>:$Port ($ips)"
+Write-Host "  Panel:      $($scheme)://localhost:$Port   ·   desde otros PC: $($scheme)://$($env:COMPUTERNAME):$Port o $($scheme)://<IP>:$Port ($ips)"
+if ($scheme -eq 'https') {
+  Write-Host "  HTTPS:      certificado propio; el navegador avisará la primera vez. Huella SHA-256 del certificado:"
+  Write-Host "              $fp"
+  Write-Host "              Para quitar el aviso: abrir $($scheme)://$($env:COMPUTERNAME):$Port/certificado e instalarlo en «Entidades de certificación raíz de confianza»."
+}
 if ($public.Count) { Write-Host "  Aviso:      redes con perfil Público ($($public -join ', ')): desde otros PC el panel no se abrirá hasta cambiar el perfil." -ForegroundColor Yellow }
 Write-Host "  Registros:  $Logs\pip_update.log, configure.log, pytest_update.log, panel_task.log, api.log, sc_process.log"

@@ -2,7 +2,8 @@
 
     python -m panel.main            (SC_ENV=prod is set by deploy/run_panel.cmd)
 
-Listens on panel_config.json bind:port (default 0.0.0.0:8050). Starts the API and the control if autostart is on.
+Listens on panel_config.json bind:port (default 0.0.0.0:8050), over HTTPS with its own certificate (panel/tls.py)
+unless "https" is false. Starts the API and the control if autostart is on.
 """
 import os
 import sys
@@ -14,6 +15,7 @@ from panel.collector import Collector
 from panel.config import Config
 from panel.readers import api_health
 from panel.supervisor import ManagedProcess, Supervisor
+from panel.tls import uvicorn_ssl
 from panel.web import PanelContext, create_app
 from sc import config as sc_config
 from sc import state_io
@@ -58,7 +60,8 @@ def main():
         ctx.supervisor.start()
     ctx.supervisor.run_in_thread(interval_s=5)
     try:
-        uvicorn.run(app, host=ctx.config.get("bind"), port=int(ctx.config.get("port")), log_level="info")
+        uvicorn.run(app, host=ctx.config.get("bind"), port=int(ctx.config.get("port")), log_level="info",
+                    **uvicorn_ssl(ctx.config, ctx.state_dir))
     finally:
         ctx.supervisor.shutdown()
 

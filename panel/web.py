@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 import json
 
 from panel import agenda as agenda_mod
-from panel import alerts, dryrun, plc_ops, readers, simfull, simulator, wincc
+from panel import alerts, dryrun, plc_ops, readers, simfull, simulator, tls, wincc
 from panel.auth import ADMIN, VIEWER, Lock, People, Sessions, role_of, user_id
 from panel.journal import ACTIONS_HEADER, CATEGORIES, category_of
 from panel.config import EXIT_STATES
@@ -298,6 +298,14 @@ def create_app(ctx: PanelContext) -> FastAPI:
     def index():
         return FileResponse(STATIC / "index.html")
 
+    @app.get("/certificado")
+    def certificate():
+        """The panel's own certificate (public part only), to install it in a browser and stop the warning."""
+        cert = ctx.state_dir / tls.CERT_FILE
+        if not cert.exists():
+            raise HTTPException(404, "El panel no usa HTTPS: no hay certificado")
+        return FileResponse(cert, media_type="application/x-x509-ca-cert", filename="panel_rce.crt")
+
     # --- session
     @app.get("/api/me")
     def me(request: Request):
@@ -328,7 +336,8 @@ def create_app(ctx: PanelContext) -> FastAPI:
             raise HTTPException(401, "Nombre o PIN incorrectos")
         token = ctx.sessions.create(name, host=request.client.host)
         ctx.actions.add(author=name, action="login", mode=ctx.mode, result="ok", host=request.client.host)
-        response.set_cookie(COOKIE, token, httponly=True, samesite="lax", max_age=12 * 3600)
+        response.set_cookie(COOKIE, token, httponly=True, samesite="lax", max_age=12 * 3600,
+                            secure=request.url.scheme == "https")
         return {"ok": True, "name": name, "role": role_of(name), "must_change": ctx.people.must_change(name)}
 
     @app.post("/api/password")

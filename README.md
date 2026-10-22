@@ -143,7 +143,7 @@ sombra en `plc.shadow.schedule`.
 
 ```bash
 export SC_ENV=prod
-python -m panel.main        # http://localhost:8050 (y desde la red del laboratorio)
+python -m panel.main        # https://localhost:8050 (y desde la red del laboratorio)
 ```
 
 El panel (`panel/`) arranca y vigila la API y el control (`panel/supervisor.py`; si uno se para, lo vuelve a
@@ -151,7 +151,9 @@ arrancar tras 60 s, y la espera se dobla con cada fallo seguido hasta 15 min), y
 semáforos, estado del RCE, última decisión, avisos con qué hacer, lecturas de WinCC, historial, mandos manuales en
 seco (`panel/dryrun.py`: la secuencia exacta de escrituras que haría el PLC, simulada), simulador rápido
 (`panel/simulator.py`), diario de campaña (`state/diario.csv`) y ajustes. Se entra con nombre y PIN; los mandos exigen
-«Tomar el mando» (una sola persona a la vez). Especificación: `rce_review/panel_rce/ESPECIFICACION_panel_rce.md` del
+«Tomar el mando» (una sola persona a la vez). Va por HTTPS con un certificado propio que el panel crea en `state/`
+(`panel/tls.py`; el navegador avisa la primera vez, y el certificado se puede instalar desde `/certificado`;
+`"https": false` en `state/panel_config.json` vuelve a HTTP). Especificación: `rce_review/panel_rce/ESPECIFICACION_panel_rce.md` del
 repositorio de trabajo. Instalación en el PC del laboratorio: `deploy/install_shadow_lab.ps1` (ai_rce en sombra) y
 después `deploy/install_panel.ps1` (tarea programada `RCE-Panel`, puerto 8050, acceso directo «Panel RCE»).
 Para actualizar un PC que ya tiene el panel, después de `git pull --ff-only`: `deploy/update_lab.ps1` (un solo
