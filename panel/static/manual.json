@@ -301,8 +301,8 @@
           "kind": "line",
           "unit": "W/m²",
           "zero": true,
-          "ymin": -110,
-          "ymax": 10,
+          "ymin": -100,
+          "ymax": 20,
           "x": [
             "21",
             "22",
