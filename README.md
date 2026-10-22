@@ -171,6 +171,19 @@ el panel obliga a cambiarla en la primera entrada; lo mismo cuando `rce_admin` p
 (salvo `rce_viewer`). Cada persona cambia la suya en Ajustes → «Cambiar mi contraseña». La API comprueba el perfil en
 cada petición.
 
+**Agenda.** Pestaña Agenda: mantener un estado (frío, calor, parada o automático del PLC) entre dos horas, o lanzar
+un mando a una hora; se puede repetir hasta 14 días seguidos. Mientras dura un estado, el control sigue decidiendo y
+registrando, pero no aplica sus decisiones (pausa «agenda»); al terminar vuelve el control automático (por defecto),
+parada o el estado de antes. En SOMBRA se aplica al estado simulado (el control atiende las órdenes del panel cada 10 s,
+sin esperar al siguiente ciclo). En REAL solo se ejecutan las entradas de `rce_admin`, con los mismos trabajos que los
+mandos reales, y cada estado puede abrir y cerrar un ensayo «manual» en el diario; las demás quedan en espera. Se guarda
+en `state/agenda.json`. Probado de extremo a extremo contra `sc/plc_dummy.py`.
+
+**Auditoría.** Pestaña Auditoría: todas las acciones del panel (entradas, salidas e intentos fallidos, mando, mandos,
+agenda, ajustes, cuentas, modo, diario, simulador) con usuario, PC, modo y resultado; filtros por usuario, tipo y
+periodo, y descarga en CSV (`/api/audit`, `/api/audit.csv`). El registro es `state/acciones.csv`, que Filebeat envía a
+Kibana.
+
 **Contraseña del modo REAL.** Activar REAL exige, además del mando y de las dos confirmaciones («¿Estás seguro?» y
 escribir `REAL`), la contraseña del modo REAL. Recién instalado el panel no hay contraseña y la activación se rechaza
 (403). La contraseña se define o cambia en Ajustes **solo desde el propio PC del laboratorio** (localhost), con el mando
