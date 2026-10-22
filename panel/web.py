@@ -17,6 +17,7 @@ import json
 
 from panel import alerts, dryrun, plc_ops, readers, simfull, simulator, wincc
 from panel.auth import ADMIN, VIEWER, Lock, People, Sessions, role_of, user_id
+from panel.journal import ACTIONS_HEADER, CATEGORIES, category_of
 from panel.config import EXIT_STATES
 from panel.journal import Actions, Diary, DIARY_KINDS, OPERATIONS
 from sc import state_io
@@ -287,8 +288,11 @@ def create_app(ctx: PanelContext) -> FastAPI:
     def login(body: Credentials, request: Request, response: Response):
         name = user_id(body.name)
         if not ctx.people.verify(name, body.pin):
+            ctx.actions.add(author=name, action="login", mode=ctx.mode, result="error: usuario o contraseña incorrectos",
+                            host=request.client.host)
             raise HTTPException(401, "Nombre o PIN incorrectos")
         token = ctx.sessions.create(name, host=request.client.host)
+        ctx.actions.add(author=name, action="login", mode=ctx.mode, result="ok", host=request.client.host)
         response.set_cookie(COOKIE, token, httponly=True, samesite="lax", max_age=12 * 3600)
         return {"ok": True, "name": name, "role": role_of(name), "must_change": ctx.people.must_change(name)}
 
@@ -308,6 +312,9 @@ def create_app(ctx: PanelContext) -> FastAPI:
 
     @app.post("/api/logout")
     def logout(request: Request, response: Response):
+        u = user_of(request)
+        if u:
+            log_action(u, "logout")
         ctx.sessions.drop(request.cookies.get(COOKIE, ""))
         response.delete_cookie(COOKIE)
         return {"ok": True}
@@ -466,16 +473,21 @@ def create_app(ctx: PanelContext) -> FastAPI:
     def lock_take(request: Request):
         u = require_user(request)
         require_writer(u)
+        had = (ctx.lock.holder() or {}).get("name") == u["name"]
         ok, holder = ctx.lock.take(u["name"], u.get("host", ""))
         if not ok:
+            log_action(u, "lock:take", result=f"error: lo tiene {holder}")
             raise HTTPException(423, detail={"message": f"El mando lo tiene {holder}", "lock": _lock_dict(ctx.lock.holder())})
+        if not had:
+            log_action(u, "lock:take")
         return {"ok": True, "lock": _lock_dict(ctx.lock.holder())}
 
     @app.post("/api/lock/release")
     def lock_release(request: Request):
         u = require_user(request)
         require_writer(u)
-        ctx.lock.release(u["name"])
+        if ctx.lock.release(u["name"]):
+            log_action(u, "lock:release")
         return {"ok": True, "lock": _lock_dict(ctx.lock.holder())}
 
     # --- commands (dry run) and pause
@@ -588,6 +600,7 @@ def create_app(ctx: PanelContext) -> FastAPI:
             raise HTTPException(422, "Tipo de operación desconocido")
         row = ctx.diary.add(author=u["name"], kind=body.kind, text=body.text.strip(), host=u.get("host", ""),
                             operation=body.operation)
+        log_action(u, f"diario:{body.kind}")
         if body.kind in ("ensayo_inicio", "ensayo_fin") and ctx.collector is not None:
             try:
                 ctx.collector.run_once()          # write the trial summary right away
@@ -599,6 +612,44 @@ def create_app(ctx: PanelContext) -> FastAPI:
     def get_actions(request: Request, n: int = 50):
         require_user(request)
         return ctx.actions.last(n)
+
+    def _audit_rows(user="", category="", since="", until="", n=500):
+        t0 = readers.parse_ts(since) or readers.parse_ts((since or "") + ":00") if since else None
+        t1 = readers.parse_ts(until) or readers.parse_ts((until or "") + ":00") if until else None
+        out = []
+        for r in reversed(ctx.actions.rows()):
+            ts = readers.parse_ts(r["timestamp"])
+            if user and r["autor"] != user_id(user):
+                continue
+            if category and category_of(r["accion"]) != category:
+                continue
+            if (t0 and ts and ts < t0) or (t1 and ts and ts > t1):
+                continue
+            out.append({**r, "categoria": category_of(r["accion"])})
+            if len(out) >= n:
+                break
+        return out
+
+    @app.get("/api/audit")
+    def get_audit(request: Request, user: str = "", category: str = "", since: str = "", until: str = "", n: int = 500):
+        require_user(request)
+        rows = _audit_rows(user, category, since, until, max(1, min(n, 5000)))
+        return {"rows": rows, "users": sorted({r["autor"] for r in ctx.actions.rows()} | set(ctx.people.names())),
+                "categories": sorted(set(CATEGORIES.values()) | {"otros"})}
+
+    @app.get("/api/audit.csv")
+    def get_audit_csv(request: Request, user: str = "", category: str = "", since: str = "", until: str = ""):
+        require_user(request)
+        import csv as _csv
+        import io
+        buf = io.StringIO()
+        w = _csv.DictWriter(buf, fieldnames=ACTIONS_HEADER + ["categoria"], lineterminator="\n")
+        w.writeheader()
+        for r in _audit_rows(user, category, since, until, 100000):
+            w.writerow({k: r.get(k, "") for k in ACTIONS_HEADER + ["categoria"]})
+        name = f"auditoria_panel_rce_{datetime.now():%Y%m%d-%H%M}.csv"
+        return Response(buf.getvalue(), media_type="text/csv; charset=utf-8",
+                        headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
     @app.get("/api/events")
     def get_events(request: Request):

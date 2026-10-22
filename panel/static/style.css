@@ -160,3 +160,5 @@ a { color: var(--accent); }
 /* viewer account: forms that would write are hidden */
 body[data-role="viewer"] #trial-form button, body[data-role="viewer"] #note-form, body[data-role="viewer"] .cmd-grid,
 body[data-role="viewer"] #people-form { display: none !important; }
+
+#aud-table tr.bad td { color: var(--bad); }

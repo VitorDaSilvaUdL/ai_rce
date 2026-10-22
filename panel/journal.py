@@ -12,6 +12,18 @@ DIARY_KINDS = {"ensayo_inicio": "Inicio de ensayo", "ensayo_fin": "Fin de ensayo
                "nota": "Nota", "mando": "Mando manual", "modo": "Cambio de modo", "sistema": "Sistema"}
 
 
+# audit categories by the prefix of the action
+CATEGORY_PREFIXES = {"acceso": ("login", "logout"), "mando": ("lock",), "sistema": ("system", "filebeat"),
+                     "mandos": ("dryrun", "command", "job"), "control": ("control",), "modo": ("mode",),
+                     "ajustes": ("settings",), "cuentas": ("people", "password", "real-password"), "diario": ("diario",),
+                     "agenda": ("agenda",), "simulador": ("simulate_full", "replay")}
+CATEGORIES = {prefix: cat for cat, prefixes in CATEGORY_PREFIXES.items() for prefix in prefixes}
+
+
+def category_of(action):
+    return CATEGORIES.get(str(action).split(":", 1)[0], "otros")
+
+
 def _stamp(now):
     return (now or datetime.now()).strftime("%Y-%m-%d %H:%M:%S")
 

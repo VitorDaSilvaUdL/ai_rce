@@ -186,7 +186,7 @@ def test_system_start_stop_logs_the_action(client, ctx):
     assert ctx.supervisor.calls == ["start"]
     assert client.post("/api/system/stop").status_code == 200
     assert client.post("/api/system/restart/sc").status_code == 200
-    acts = client.get("/api/actions").json()
+    acts = [a for a in client.get("/api/actions").json() if a["accion"] != "login"]
     assert [a["accion"] for a in acts] == ["system:start", "system:stop", "system:restart:sc"]
     assert acts[0]["autor"] == "rce_admin" and acts[0]["modo"] == "shadow"
 

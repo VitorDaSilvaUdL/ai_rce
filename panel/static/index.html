@@ -33,6 +33,7 @@
   <button data-tab="simulador">Simulador</button>
   <button data-tab="historial">Historial</button>
   <button data-tab="diario">Diario</button>
+  <button data-tab="auditoria">Auditoría</button>
   <button data-tab="ajustes">Ajustes</button>
 </nav>
 
@@ -308,9 +309,22 @@
     <h2>Últimas anotaciones</h2>
     <table class="table" id="diary-table"><thead><tr><th>Cuándo</th><th>Quién</th><th>Tipo</th><th>Texto</th><th>Ensayo</th></tr></thead><tbody></tbody></table>
   </div>
+  <p class="muted">Las acciones hechas en el panel (quién, cuándo y desde qué PC) están en la pestaña Auditoría.</p>
+</section>
+
+<!-- ===================================================== AUDITORÍA -->
+<section id="tab-auditoria" class="tab">
+  <div class="toolbar">
+    <label>Usuario <select id="aud-user"><option value="">Todos</option></select></label>
+    <label>Tipo <select id="aud-cat"><option value="">Todos</option></select></label>
+    <label>Desde <input type="datetime-local" id="aud-since"></label>
+    <label>Hasta <input type="datetime-local" id="aud-until"></label>
+    <button class="btn small" id="btn-aud">Filtrar</button>
+    <a class="btn small ghost" id="aud-csv" href="/api/audit.csv">Descargar CSV</a>
+    <span class="muted" id="aud-info"></span>
+  </div>
   <div class="card">
-    <h2>Últimas acciones en el panel</h2>
-    <table class="table" id="actions-table"><thead><tr><th>Cuándo</th><th>Quién</th><th>Acción</th><th>Modo</th><th>Resultado</th></tr></thead><tbody></tbody></table>
+    <table class="table" id="aud-table"><thead><tr><th>Cuándo</th><th>Quién</th><th>PC</th><th>Tipo</th><th>Acción</th><th>Modo</th><th>Resultado</th></tr></thead><tbody></tbody></table>
   </div>
 </section>
 

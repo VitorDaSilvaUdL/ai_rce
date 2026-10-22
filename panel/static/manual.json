@@ -11,6 +11,7 @@
     "Simulador",
     "Historial",
     "Diario",
+    "Auditoría",
     "Ajustes"
   ],
   "sections": [
@@ -909,6 +910,57 @@
         "Producción de calor diurna"
       ],
       "note": "Con las lecturas, el panel calcula cada 5 minutos la potencia y la energía, y resume cada ensayo: frío y calor producidos, bajada del depósito frío, horas de tapa abierta y meteorología media. Todo llega a Kibana (dashboard «RCE — Ensayos: manual frente a automático»). Sin ensayo en el diario, no hay comparación. Abajo: las últimas anotaciones y las últimas acciones hechas en el panel."
+    },
+    {
+      "id": "auditoria",
+      "tab": "Auditoría",
+      "kicker": "Auditoría",
+      "title": "Quién ha hecho qué, cuándo y desde dónde",
+      "lead": "Todo lo que se hace en el panel queda registrado con el usuario, el PC, el modo (sombra o real) y el resultado. Lo ve cualquiera que entre en el panel.",
+      "items": [
+        [
+          "Acceso",
+          "Entradas, salidas e intentos fallidos."
+        ],
+        [
+          "Mando y mandos",
+          "Tomar y soltar el mando; mandos en seco y reales; abortar."
+        ],
+        [
+          "Sistema y control",
+          "Arrancar, parar y reiniciar; pausa del control; envío a Kibana."
+        ],
+        [
+          "Agenda",
+          "Entradas creadas, canceladas, ejecutadas o fallidas."
+        ],
+        [
+          "Cuentas, ajustes y modo",
+          "Altas y contraseñas, ajustes, contraseña del modo REAL, cambios de modo."
+        ],
+        [
+          "Diario y simulador",
+          "Anotaciones, ensayos, simulaciones con el modelo y reproducciones de días."
+        ]
+      ],
+      "howto": [
+        [
+          "Filtrar",
+          "Por usuario, por tipo de acción y por periodo (desde y hasta)."
+        ],
+        [
+          "Descargar CSV",
+          "Lo filtrado, para guardarlo o analizarlo."
+        ],
+        [
+          "En rojo",
+          "Las acciones que han fallado (p. ej. un intento de entrada con contraseña incorrecta)."
+        ],
+        [
+          "Kibana",
+          "Las mismas acciones llegan al dashboard «Salud del sistema»."
+        ]
+      ]
     },
     {
       "id": "ajustes",

@@ -89,7 +89,8 @@
       h += `<div class="grid g3">${sec.levels.map((l) => `<div class="card"><b>${esc(l.title)}</b>${esc(l.text)}</div>`).join("")}</div>`;
       h += `<div style="margin-top:12px">${chart(sec.chart, "full")}</div>${note(sec.note)}`;
     }
-    if (sec.items) h += `<div class="grid g2"><div>${kv(sec.items)}</div>${chart(sec.chart)}</div>${note(sec.note)}`;
+    if (sec.items && sec.chart) h += `<div class="grid g2"><div>${kv(sec.items)}</div>${chart(sec.chart)}</div>${note(sec.note)}`;
+    if (sec.items && !sec.chart) h += `<div class="grid g2"><div><h3>Qué se registra</h3>${kv(sec.items)}</div><div><h3>Cómo usarla</h3>${kv(sec.howto || [])}</div></div>${note(sec.note)}`;
     if (sec.types) h += `<div class="grid g2"><div>${steps(sec.steps)}</div><div class="card"><b>Tipos de ensayo</b><ul class="reasons">${sec.types.map((t) => `<li>${esc(t)}</li>`).join("")}</ul></div></div>${note(sec.note)}`;
     if (sec.exit) {
       h += `<div class="grid g2"><div><h3>Pasar a modo REAL</h3>${steps(sec.steps)}</div><div><h3>Al volver a SOMBRA, el PLC queda en</h3>${kv(sec.exit)}<h3>Además</h3>${kv(sec.others)}</div></div>`;

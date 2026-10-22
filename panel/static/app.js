@@ -114,6 +114,7 @@
     if (name === "control" && status) renderControl(status);
     if (name === "historial") loadHistory();
     if (name === "diario") loadDiary();
+    if (name === "auditoria") loadAudit(true);
     if (name === "ajustes") loadSettings();
     if (name === "simulador") {
       if (!$("#sim-now").value) $("#sim-now").value = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16);
@@ -412,7 +413,7 @@
 
   // ------------------------------------------------------------------ Diario
   async function loadDiary() {
-    let rows, acts; try { rows = await api("/api/diary?n=60"); acts = await api("/api/actions?n=40"); } catch (e) { return; }
+    let rows; try { rows = await api("/api/diary?n=60"); } catch (e) { return; }
     const open = rows.slice().reverse().find((r) => r.tipo === "ensayo_inicio" || r.tipo === "ensayo_fin");
     const trial = open && open.tipo === "ensayo_inicio" ? open.ensayo_id : null;
     const OPS = {manual: "manual", automatico_plc: "automático PLC", control_ia: "control IA"};
@@ -420,7 +421,7 @@
     $("#btn-trial-start").disabled = !!trial; $("#btn-trial-end").disabled = !trial;
     const KIND = {ensayo_inicio: "Inicio de ensayo", ensayo_fin: "Fin de ensayo", incidencia: "Incidencia", nota: "Nota", mando: "Mando manual", modo: "Cambio de modo", sistema: "Sistema"};
     $("#diary-table tbody").innerHTML = rows.slice().reverse().map((r) => `<tr><td>${esc(fmtTs(r.timestamp))}</td><td>${esc(r.autor)}</td><td>${esc(KIND[r.tipo] || r.tipo)}</td><td>${esc(r.texto)}</td><td class="muted">${esc(r.ensayo_id)}${r.operacion ? " · " + esc(OPS[r.operacion] || r.operacion) : ""}</td></tr>`).join("") || "<tr><td colspan=5 class='muted'>Sin anotaciones</td></tr>";
-    $("#actions-table tbody").innerHTML = acts.slice().reverse().map((a) => `<tr><td>${esc(fmtTs(a.timestamp))}</td><td>${esc(a.autor)}</td><td>${esc(a.accion)}</td><td>${esc(a.modo)}</td><td>${esc(a.resultado)}</td></tr>`).join("") || "<tr><td colspan=5 class='muted'>Sin acciones</td></tr>";
+
   }
   $("#trial-form").addEventListener("submit", async (ev) => {
     ev.preventDefault();
@@ -498,6 +499,53 @@
     ev.preventDefault();
     try { await post("/api/people", {name: $("#p-name").value.trim(), pin: $("#p-pin").value}); $("#p-name").value = ""; $("#p-pin").value = ""; toast("Persona guardada", "ok"); loadSettings(); } catch (e) {}
   });
+
+  // ------------------------------------------------------------------ Auditoría
+  const CMD_ES = {cold: "modo frío", heat: "modo calor", parada: "parada", automatic: "automático", open_cover: "abrir tapa",
+                  close_cover: "cerrar tapa", test_cover: "prueba de tapa"};
+  function actionEs(a) {
+    const [k, ...rest] = String(a).split(":"), r = rest.join(":");
+    const fixed = {login: "Entrada", logout: "Salida", "lock:take": "Toma el mando", "lock:release": "Suelta el mando",
+      "system:start": "Arranca la predicción y el control", "system:stop": "Para la predicción y el control",
+      "system:restart": "Reinicia la predicción y el control", "filebeat:restart": "Reinicia el envío a Kibana",
+      "control:pause": "Pone el control automático en pausa", "control:resume": "Reactiva el control automático",
+      "mode:real": "Activa el modo REAL", "mode:shadow": "Vuelve al modo SOMBRA", "job:abort": "Aborta un mando",
+      "password:change": "Cambia su contraseña", "simulate_full": "Simulador completo"}[a] || null;
+    if (fixed) return fixed;
+    if (k === "dryrun") return `Mando en seco: ${CMD_ES[r] || r}`;
+    if (k === "command") return `Mando REAL: ${CMD_ES[r] || r}`;
+    if (k === "system" && rest[0] === "restart") return `Reinicia ${rest[1] === "sc" ? "el control" : "la predicción"}`;
+    if (k === "people") return rest[0] === "add" ? `Alta o contraseña nueva: ${rest[1]}` : `Quita a ${rest[1]}`;
+    if (k === "real-password") return "Contraseña del modo REAL";
+    if (k === "settings") return `Ajustes: ${r}`;
+    if (k === "diario") return `Diario: ${r.replace("ensayo_inicio", "inicio de ensayo").replace("ensayo_fin", "fin de ensayo")}`;
+    if (k === "replay") return `Reproduce el día ${r}`;
+    if (k === "mode" && rest[0] === "real") return "Intento de activar REAL: contraseña incorrecta";
+    if (k === "agenda") return `Agenda: ${r}`;
+    return a;
+  }
+  function audParams() {
+    const p = new URLSearchParams();
+    if ($("#aud-user").value) p.set("user", $("#aud-user").value);
+    if ($("#aud-cat").value) p.set("category", $("#aud-cat").value);
+    if ($("#aud-since").value) p.set("since", $("#aud-since").value);
+    if ($("#aud-until").value) p.set("until", $("#aud-until").value);
+    return p;
+  }
+  async function loadAudit(fillFilters) {
+    const p = audParams();
+    let d; try { d = await api("/api/audit?" + p.toString()); } catch (e) { return; }
+    if (fillFilters) {
+      const keep = [$("#aud-user").value, $("#aud-cat").value];
+      $("#aud-user").innerHTML = '<option value="">Todos</option>' + d.users.map((u) => `<option>${esc(u)}</option>`).join("");
+      $("#aud-cat").innerHTML = '<option value="">Todos</option>' + d.categories.map((c) => `<option>${esc(c)}</option>`).join("");
+      $("#aud-user").value = keep[0]; $("#aud-cat").value = keep[1];
+    }
+    $("#aud-csv").href = "/api/audit.csv?" + p.toString();
+    $("#aud-info").textContent = `${d.rows.length} acciones${d.rows.length >= 500 ? " (las 500 más recientes; filtra o descarga el CSV para ver todas)" : ""}`;
+    $("#aud-table tbody").innerHTML = d.rows.map((a) => `<tr class="${String(a.resultado).startsWith("error") ? "bad" : ""}"><td>${esc(fmtTs(a.timestamp))}</td><td>${esc(a.autor)}</td><td class="muted">${esc(a.host)}</td><td>${esc(a.categoria)}</td><td title="${esc(a.accion)}">${esc(actionEs(a.accion))}</td><td>${esc(a.modo)}</td><td>${esc(a.resultado)}</td></tr>`).join("") || "<tr><td colspan=7 class='muted'>Sin acciones con estos filtros</td></tr>";
+  }
+  $("#btn-aud").addEventListener("click", () => loadAudit(false));
 
   // ------------------------------------------------------------------ start
   async function start() {
