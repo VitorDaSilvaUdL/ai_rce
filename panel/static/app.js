@@ -189,7 +189,8 @@
     const viewer = role === "viewer";
     $("#btn-start").disabled = w || viewer; $("#btn-stop").disabled = !w || viewer; $("#btn-restart").disabled = !w || viewer;
     $("#btn-fb-restart").hidden = s.lights.filebeat !== "bad" || viewer;
-    $("#sup-info").textContent = w ? `Sistema en marcha desde ${fmtTs(s.supervisor.wanted_since)} · predicción ${s.supervisor.api.running ? "activa" : "parada"} (${s.supervisor.api.restarts} reinicios) · control ${s.supervisor.sc.running ? "activo" : "parado"} (${s.supervisor.sc.restarts} reinicios)` : "Sistema parado";
+    const retry = (p) => (!p.running && p.next_restart_in_s != null) ? `, código ${p.last_exit_code}, reintento en ${p.next_restart_in_s} s` : "";
+    $("#sup-info").textContent = w ? `Sistema en marcha desde ${fmtTs(s.supervisor.wanted_since)} · predicción ${s.supervisor.api.running ? "activa" : "parada"} (${s.supervisor.api.restarts} reinicios${retry(s.supervisor.api)}) · control ${s.supervisor.sc.running ? "activo" : "parado"} (${s.supervisor.sc.restarts} reinicios${retry(s.supervisor.sc)})` : "Sistema parado";
     const ul = $("#alerts");
     ul.innerHTML = s.alerts.length ? s.alerts.map((a) => `<li class="${a.level}"><span class="t">${esc(a.title)}</span><span class="a">→ ${esc(a.action)}</span>${a.detail ? `<span class="d">${esc(a.detail)}</span>` : ""}</li>`).join("") : '<li class="ok">Todo en orden</li>';
     $("#main-readings").innerHTML = s.readings.map((r) => `<div class="rd ${r.stale ? "stale" : r.frozen ? "frozen" : ""}"><div class="l">${esc(r.label)}${r.system === "RCE-b" ? " (B)" : ""}</div><div><span class="v">${fmtNum(r.value, r.unit === "W/m²" ? 0 : 1)}</span><span class="u">${esc(r.unit)}</span></div><div class="t">${esc(fmtTs(r.ts))} ${r.stale ? "· sin lecturas" : r.frozen ? "· sin cambios" : ""}</div></div>`).join("");

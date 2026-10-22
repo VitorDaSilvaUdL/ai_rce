@@ -146,7 +146,8 @@ export SC_ENV=prod
 python -m panel.main        # http://localhost:8050 (y desde la red del laboratorio)
 ```
 
-El panel (`panel/`) arranca y vigila la API y el control (`panel/supervisor.py`), y muestra en el navegador:
+El panel (`panel/`) arranca y vigila la API y el control (`panel/supervisor.py`; si uno se para, lo vuelve a
+arrancar tras 60 s, y la espera se dobla con cada fallo seguido hasta 15 min), y muestra en el navegador:
 semáforos, estado del RCE, última decisión, avisos con qué hacer, lecturas de WinCC, historial, mandos manuales en
 seco (`panel/dryrun.py`: la secuencia exacta de escrituras que haría el PLC, simulada), simulador rápido
 (`panel/simulator.py`), diario de campaña (`state/diario.csv`) y ajustes. Se entra con nombre y PIN; los mandos exigen

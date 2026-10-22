@@ -151,10 +151,16 @@ def calculate_optimal_production_plan(available_prod, target_demand, type):
             - Producción total acumulada.
         Si no se alcanza la demanda:
             ([], -1)
+        Si no hay demanda (objetivo <= 0):
+            ([], 0.0), sin franjas y sin tocar temp_mode.
     """
     logger.debug("=== Inicio cálculo de plan óptimo de producción ===")
     logger.debug(f"Demanda objetivo: {fmt_joules(target_demand)} [Joules]")
     logger.debug(f"Número total de franjas disponibles: {len(available_prod)}")
+
+    if target_demand <= 0:
+        logger.info(f"Sin demanda (objetivo {fmt_joules(target_demand)}): no se planifican franjas (modo {type}).")
+        return [], 0.0
 
     # # Ordenar por producción ascendente
     # sorted_prod = dict(sorted(available_prod.items(), key=lambda item: item[1]))
@@ -183,7 +189,7 @@ def calculate_optimal_production_plan(available_prod, target_demand, type):
 
         logger.debug(
             f"Seleccionada {time_frame_str} → {fmt_joules(float(production_value))} [Joules] | "
-            f"Acumulado: {fmt_joules(accumulated_production / target_demand)} [Joules]"
+            f"Acumulado: {fmt_joules(accumulated_production)} [Joules]"
         )
 
         if accumulated_production >= target_demand:
@@ -647,6 +653,67 @@ def run_cycle(plc, out_path=OUTPUT_CSV_PATH, state_dir=state_io.STATE_DIR):
     return applied_state
 
 
+def plan_at_startup(now):
+    """Planificacion inicial al arrancar: calor (12:00 de hoy -> 12:00 de manana) y frio (manana 00:00 -> pasado
+    manana 00:00). Sin demanda de frio no se planifica nada (antes se dividia por la demanda y el control se paraba)."""
+    # --- Planificacion inicial de la demanda de calor ---
+    logger.info(f"{now}: Planificacion inicial de la demanda de calor.")
+    start_dem_heat = now.replace(hour=12, minute=0, second=0, microsecond=0)
+    end_dem_heat = (now + timedelta(days=1)).replace(
+        hour=12, minute=0, second=0, microsecond=0
+    )
+    logger.info(f"Ventana de planificacion calor: {start_dem_heat} <-> {end_dem_heat}")
+
+    plan_mode(
+        now=now,
+        mode_label="HOT",
+        dem_series_key="hot_dem",
+        prod_series_key="hot",
+        start_dem=start_dem_heat,
+        end_dem=end_dem_heat,
+        mode_type_int=1,
+    )
+
+    # --- Planificacion inicial de la demanda de frio (solo log informativo) ---
+    logger.info(f"{now}: Planificacion inicial de la demanda de frio.")
+    start_dem_cool = (now + timedelta(days=1)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    end_dem_cool = (now + timedelta(days=2)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    logger.info(f"Ventana de planificacion frio: {start_dem_cool} <-> {end_dem_cool}")
+
+    dem_f = calculate_dem_for_period(dem_data["cold_dem"], start_dem_cool, end_dem_cool)
+    logger.info(f"{now}: Demanda de frio estimada para el periodo: {fmt_joules(dem_f)} [Joules].")
+
+    if dem_f <= 0:
+        logger.info(f"{now}: No hay demanda de frio en los proximos dias: no se planifican franjas de frio.")
+        return
+
+    selected_time_frames_cold, total_predicted_production_cold = (
+        calculate_optimal_production_plan(prod_data["cold"], dem_f, 0)
+    )
+    logger.info(
+        f"{now}: Energia total prevista para cubrir la demanda de frio: "
+        f"{fmt_joules(total_predicted_production_cold)} [Joules]."
+    )
+    if total_predicted_production_cold == -1:
+        logger.info(
+            f"{now}: No se ha podido encontrar un plan optimo para la demanda de frio. "
+            f"Demanda: {fmt_joules(dem_f)} [Joules]."
+        )
+    else:
+        frames_cold_str = [
+            dt.isoformat(timespec="seconds")
+            for dt in sorted(selected_time_frames_cold)
+        ]
+        logger.info(
+            f"{now}: Franges horaries seleccionadas per al mode COLD (solo informacion): "
+            f"{frames_cold_str}"
+        )
+
+
 def stop():
     # Funcion de parada segura del sistema
     if plc.alarm_active:
@@ -677,65 +744,8 @@ if __name__ == '__main__':
         logger.error(f"{now}: No se han podido cargar predicciones iniciales. Saliendo.")
         stop()
 
-    # --- Planificacion inicial de la demanda de calor ---
-    logger.info(f"{now}: Planificacion inicial de la demanda de calor.")
-    start_dem_heat = now.replace(hour=12, minute=0, second=0, microsecond=0)
-    end_dem_heat = (now + timedelta(days=1)).replace(
-        hour=12, minute=0, second=0, microsecond=0
-    )
-    logger.info(f"Ventana de planificacion calor: {start_dem_heat} <-> {end_dem_heat}")
-
-    plan_mode(
-        now=now,
-        mode_label="HOT",
-        dem_series_key="hot_dem",
-        prod_series_key="hot",
-        start_dem=start_dem_heat,
-        end_dem=end_dem_heat,
-        mode_type_int=1,
-    )
-
-    # # Mantener stop aqui para pruebas (igual que en tu codigo original)
-    # stop()
-
-    # --- Planificacion inicial de la demanda de frio (solo log informativo) ---
-    logger.info(f"{now}: Planificacion inicial de la demanda de frio.")
-    start_dem_cool = (now + timedelta(days=1)).replace(
-        hour=0, minute=0, second=0, microsecond=0
-    )
-    end_dem_cool = (now + timedelta(days=2)).replace(
-        hour=0, minute=0, second=0, microsecond=0
-    )
-    logger.info(f"Ventana de planificacion frio: {start_dem_cool} <-> {end_dem_cool}")
-
-    dem_f = calculate_dem_for_period(dem_data["cold_dem"], start_dem_cool, end_dem_cool)
-    logger.info(f"{now}: Demanda de frio estimada para el periodo: {fmt_joules(dem_f)} [Joules].")
-
-    selected_time_frames_cold, total_predicted_production_cold = (
-        calculate_optimal_production_plan(prod_data["cold"], dem_f, 0)
-    )
-
-    if dem_f == 0:
-        logger.info(f"{now}: No hay demanda de frio en los proximos dias.")
-    else:
-        logger.info(
-            f"{now}: Energia total prevista para cubrir la demanda de frio: "
-            f"{fmt_joules(total_predicted_production_cold)} [Joules]."
-        )
-        if total_predicted_production_cold == -1:
-            logger.info(
-                f"{now}: No se ha podido encontrar un plan optimo para la demanda de frio. "
-                f"Demanda: {fmt_joules(dem_f)} [Joules]."
-            )
-        else:
-            frames_cold_str = [
-                dt.isoformat(timespec="seconds")
-                for dt in sorted(selected_time_frames_cold)
-            ]
-            logger.info(
-                f"{now}: Franges horaries seleccionadas per al mode COLD (solo informacion): "
-                f"{frames_cold_str}"
-            )
+    # --- Planificacion inicial de calor y frio ---
+    plan_at_startup(now)
 
     # --- Bucle de control principal ---
     while True:

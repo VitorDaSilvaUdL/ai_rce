@@ -1,14 +1,16 @@
 """Supervisor of the ai_rce processes: the prediction API (api.main) and the control loop (sc.main).
 
 The panel runs the supervisor in a thread: it starts both processes when the system is wanted running, starts the
-control only once the API answers, and restarts a process that exits (after restart_delay_s, counted from the tick
-that noticed it). Logs of each process go to a file. Nothing here touches the PLC.
+control only once the API answers, and restarts a process that exits. The wait before a restart is counted from the
+tick that noticed the exit and doubles after each crash in a row (restart_delay_s, 2x, 4x... up to
+max_restart_delay_s); a run of at least stable_run_s starts the count again. Logs of each process go to a file.
+Nothing here touches the PLC.
 """
 import os
 import subprocess
 import threading
 from collections import deque
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 
@@ -100,14 +102,17 @@ class ManagedProcess:
 
 
 class Supervisor:
-    def __init__(self, api, sc, api_ready, restart_delay_s=60):
+    def __init__(self, api, sc, api_ready, restart_delay_s=60, max_restart_delay_s=900, stable_run_s=600):
         self.api = api
         self.sc = sc
         self.api_ready = api_ready
         self.restart_delay = restart_delay_s
+        self.max_restart_delay = max_restart_delay_s
+        self.stable_run = stable_run_s
         self.wanted = False
         self.wanted_since = None
-        self._down_since = {}          # process name -> first tick that saw it down
+        self._next_at = {}             # process name -> time of its next automatic restart (set by the tick that saw it down)
+        self._failures = {}            # process name -> crashes in a row without a stable run in between
         self._lock = threading.RLock()
         self.events = deque(maxlen=300)
         self._thread = None
@@ -121,7 +126,7 @@ class Supervisor:
         with self._lock:
             self.wanted = True
             self.wanted_since = now or datetime.now()
-            self._down_since = {}
+            self._next_at, self._failures = {}, {}
             self._event("Arranque solicitado", now)
             self.api.start()
 
@@ -131,7 +136,7 @@ class Supervisor:
             self._event("Parada solicitada")
             self.sc.stop()
             self.api.stop()
-            self._down_since = {}
+            self._next_at, self._failures = {}, {}
 
     def restart(self, now=None):
         self.stop()
@@ -141,6 +146,7 @@ class Supervisor:
         with self._lock:
             proc = {"api": self.api, "sc": self.sc}[name]
             proc.stop()
+            self._clear_backoff(name)
             self._event(f"Reinicio de {name} solicitado")
             if self.wanted:
                 proc.start()
@@ -157,11 +163,23 @@ class Supervisor:
         with self._lock:
             proc = {"api": self.api, "sc": self.sc}[name]
             self._held = getattr(self, "_held", set()) - {name}
+            self._clear_backoff(name)
             if self.wanted and not proc.running:
                 proc.start()
                 self._event(f"{name} arrancado por el panel")
 
     # --- watchdog
+    def _clear_backoff(self, name):
+        self._next_at.pop(name, None)
+        self._failures.pop(name, None)
+
+    def _delay_after(self, proc):
+        """Seconds to wait before restarting proc, which has just been seen down: doubles with each crash in a row."""
+        ran_s = (proc.stopped_at - proc.started_at).total_seconds() if proc.stopped_at and proc.started_at else 0
+        n = 1 if ran_s >= self.stable_run else self._failures.get(proc.name, 0) + 1
+        self._failures[proc.name] = n
+        return min(self.restart_delay * 2 ** (n - 1), self.max_restart_delay)
+
     def tick(self, now=None):
         now = now or datetime.now()
         with self._lock:
@@ -169,25 +187,33 @@ class Supervisor:
                 return
             for proc, ready in ((self.api, lambda: True), (self.sc, self.api_ready)):
                 if proc.running or proc.name in getattr(self, "_held", set()):
-                    self._down_since.pop(proc.name, None)
+                    self._next_at.pop(proc.name, None)
                     continue
                 if proc.started_at is None:                      # never started yet
                     if ready():
                         proc.start()
                         self._event(f"{proc.name} arrancado", now)
                     continue
-                first = self._down_since.setdefault(proc.name, now)
-                if (now - first).total_seconds() >= self.restart_delay and ready():
+                if proc.name not in self._next_at:              # first tick that sees it down
+                    delay = self._delay_after(proc)
+                    self._next_at[proc.name] = now + timedelta(seconds=delay)
+                    self._event(f"{proc.name} se ha parado (código {proc.last_exit_code}); reintento en {delay} s", now)
+                if now >= self._next_at[proc.name] and ready():
                     proc.restarts += 1
                     proc.start()
-                    self._down_since.pop(proc.name, None)
-                    self._event(f"{proc.name} se había parado (código {proc.last_exit_code}): reiniciado", now)
+                    self._next_at.pop(proc.name, None)
+                    self._event(f"{proc.name} reiniciado (intento {self._failures.get(proc.name, 1)} seguido)", now)
 
     def status(self, now=None):
         now = now or datetime.now()
-        return {"wanted": self.wanted,
-                "wanted_since": self.wanted_since.isoformat(sep=" ", timespec="seconds") if self.wanted_since else None,
-                "api": self.api.info(now), "sc": self.sc.info(now), "events": list(self.events)[-20:]}
+        out = {"wanted": self.wanted,
+               "wanted_since": self.wanted_since.isoformat(sep=" ", timespec="seconds") if self.wanted_since else None,
+               "api": self.api.info(now), "sc": self.sc.info(now), "events": list(self.events)[-20:]}
+        for name in ("api", "sc"):
+            nxt = self._next_at.get(name)
+            out[name]["consecutive_failures"] = self._failures.get(name, 0)
+            out[name]["next_restart_in_s"] = max(0, int((nxt - now).total_seconds())) if nxt else None
+        return out
 
     # --- background loop
     def run_in_thread(self, interval_s=5):

@@ -79,7 +79,10 @@ def demand_in_period(dem, start, end):
 
 
 def optimal_plan(prod, target):
-    """Cheapest frames first until the target is covered, as calculate_optimal_production_plan(): ([], -1) if not."""
+    """Cheapest frames first until the target is covered, as calculate_optimal_production_plan(): ([], -1) if not,
+    ([], 0.0) when there is no demand."""
+    if target <= 0:
+        return [], 0.0
     acc, frames = 0.0, []
     for key, value in sorted(prod.items(), key=lambda kv: float(kv[1])):
         acc += float(value)

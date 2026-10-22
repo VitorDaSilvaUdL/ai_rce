@@ -122,3 +122,13 @@ def test_replay_with_the_corrected_control_turns_the_pump_on_in_planned_frames()
     # no toggling: two consecutive 'si' in the same plan keep the same state
     pairs = [(a, b) for a, b in zip(r["steps"], r["steps"][1:]) if a["action"] == "si" and b["action"] == "si" and a["plan"] == b["plan"]]
     assert pairs and all(a["next_state"] == b["next_state"] for a, b in pairs)
+
+
+def test_optimal_plan_without_demand_selects_no_frames():
+    """Same rule as sc.main.calculate_optimal_production_plan(): no demand, no frames (and no division)."""
+    prod = {"2026-10-23T01:00:00": 5.0e5, "2026-10-23T02:00:00": 2.0e5}
+    assert simfull.optimal_plan(prod, 0.0) == ([], 0.0)
+    assert simfull.optimal_plan(prod, -1.0) == ([], 0.0)
+    assert simfull.optimal_plan({}, 0.0) == ([], 0.0)
+    frames, total = simfull.optimal_plan(prod, 6.0e5)
+    assert [f.hour for f in frames] == [2, 1] and total == 7.0e5
