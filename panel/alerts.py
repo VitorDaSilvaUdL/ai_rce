@@ -82,7 +82,7 @@ def evaluate(ctx):
     # --- shipping and disk
     fb = ctx.get("filebeat", "unknown")
     if fb == "stopped":
-        out.append(Alert("filebeat_down", "warning", "Kibana no se actualiza: el envío está parado", "Pulsar «Reiniciar envío»"))
+        out.append(Alert("filebeat_down", "warning", "Kibana no se actualiza: el envío está parado", "Pulsar «Reiniciar envío a Kibana» en Inicio"))
     elif fb == "missing":
         out.append(Alert("filebeat_missing", "info", "El envío a Kibana no está instalado", "Instalar Filebeat (rce-monitoring)"))
     free = ctx.get("disk_free_gb")

@@ -151,6 +151,7 @@
     } else { $("#decision").textContent = "El control todavía no ha decidido nada."; $("#plan").textContent = ""; }
     const w = s.supervisor.wanted;
     $("#btn-start").disabled = w; $("#btn-stop").disabled = !w; $("#btn-restart").disabled = !w;
+    $("#btn-fb-restart").hidden = s.lights.filebeat !== "bad";
     $("#sup-info").textContent = w ? `Sistema en marcha desde ${fmtTs(s.supervisor.wanted_since)} · predicción ${s.supervisor.api.running ? "activa" : "parada"} (${s.supervisor.api.restarts} reinicios) · control ${s.supervisor.sc.running ? "activo" : "parado"} (${s.supervisor.sc.restarts} reinicios)` : "Sistema parado";
     const ul = $("#alerts");
     ul.innerHTML = s.alerts.length ? s.alerts.map((a) => `<li class="${a.level}"><span class="t">${esc(a.title)}</span><span class="a">→ ${esc(a.action)}</span>${a.detail ? `<span class="d">${esc(a.detail)}</span>` : ""}</li>`).join("") : '<li class="ok">Todo en orden</li>';
@@ -168,7 +169,7 @@
       ["Último ciclo", c.cycle_time ? fmtTs(c.cycle_time) : "—"],
     ].map(([k, v]) => `<b>${esc(k)}</b><span>${esc(v)}</span>`).join("");
     const sch = c.schedule;
-    $("#ctl-schedule").textContent = sch ? `Calor ${sch.heat_start.slice(0, 5)}–${sch.heat_end.slice(0, 5)} · parada hasta ${sch.parada_end.slice(0, 5)} · el resto frío · fines de semana parada (solo cuando el RCE está en parada y la IA dice «sí»)` : "En modo real el horario se lee del PLC (DB80/83).";
+    $("#ctl-schedule").textContent = sch ? `Horario semanal del PLC simulado: calor ${sch.heat_start.slice(0, 5)}–${sch.heat_end.slice(0, 5)} · parada hasta ${sch.parada_end.slice(0, 5)} · el resto frío · fines de semana parada. El control no lo usa para decidir: con «sí» pone el modo de la franja planificada.` : "En modo real el horario se lee del PLC (DB80/83).";
     $("#ctl-reasons").innerHTML = (d.reasons || []).length ? d.reasons.map((x) => `<li>${esc(x)}</li>`).join("") : "<li class='muted'>Sin decisión todavía</li>";
     const tNow = Date.parse((s.now || "").replace(" ", "T")) / 1000;
     const kv = (obj, parse) => Object.entries(obj || {}).map(([k, v]) => [parse(k), v / 3.6e6]).filter((x) => !isNaN(x[0])).sort((a, b) => a[0] - b[0]);
@@ -188,6 +189,9 @@
   $("#btn-start").addEventListener("click", () => act("/api/system/start", "Arrancando…"));
   $("#btn-stop").addEventListener("click", () => confirm("¿Parar el control y la predicción?") && act("/api/system/stop", "Parando…"));
   $("#btn-restart").addEventListener("click", () => act("/api/system/restart", "Reiniciando…"));
+  $("#btn-fb-restart").addEventListener("click", async () => {
+    try { const r = await post("/api/filebeat/restart"); toast(r.ok ? "Envío a Kibana reiniciado" : "No se pudo reiniciar el envío: avisar a Vítor", r.ok ? "ok" : "bad"); await loadStatus(); } catch (e) {}
+  });
   async function act(path, msg) { try { toast(msg); await post(path); await loadStatus(); } catch (e) {} }
   $("#btn-lock").addEventListener("click", async () => {
     try {
@@ -279,14 +283,17 @@
   // ------------------------------------------------------------------ Simulador
   $("#sim-form").addEventListener("submit", async (ev) => {
     ev.preventDefault();
-    const body = {now: $("#sim-now").value, state: $("#sim-state").value, answer: $("input[name=sim-answer]:checked").value, alarm: $("#sim-alarm").checked};
+    const body = {now: $("#sim-now").value, state: $("#sim-state").value, answer: $("input[name=sim-answer]:checked").value, alarm: $("#sim-alarm").checked,
+      frame: $("input[name=sim-frame]:checked").value};
     let r; try { r = await post("/api/simulate", body); } catch (e) { return; }
     $("#sim-result").hidden = false;
     const sm = $("#sim-mode"); sm.className = "big " + r.plc_mode; $(".ico", sm).textContent = MODE_ICO[r.plc_mode] || "?"; $("span:last-child", sm).textContent = (MODE_ES[r.plc_mode] || r.plc_mode) + (r.changed ? " (cambia)" : " (se mantiene)");
     const sc = $("#sim-cover"); sc.className = "big " + r.cover; $(".ico", sc).textContent = COVER_ICO[r.cover] || "?"; $("span:last-child", sc).textContent = COVER_ES[r.cover] || r.cover;
     actuators(r.pumps, $("#sim-pumps"));
     $("#sim-reasons").innerHTML = r.reasons.map((x) => `<li>${esc(x)}</li>`).join("");
-    $("#sim-schedule").textContent = `Horario usado: calor ${r.schedule.heat_start.slice(0, 5)}–${r.schedule.heat_end.slice(0, 5)}, parada hasta ${r.schedule.parada_end.slice(0, 5)}, el resto frío; fines de semana parada. Franja de la hora elegida: ${r.slot}.`;
+    $("#sim-schedule").textContent = r.policy === "toggle"
+      ? `Política antigua del control. Horario usado: calor ${r.schedule.heat_start.slice(0, 5)}–${r.schedule.heat_end.slice(0, 5)}, parada hasta ${r.schedule.parada_end.slice(0, 5)}, el resto frío; fines de semana parada. Franja de la hora elegida: ${r.slot}.`
+      : "Con «sí», el control pone el modo de la franja planificada activa; con «no» mantiene el estado; con «parada» para. Si el RCE está en automático, manda el programa del PLC.";
   });
 
   // ------------------------------------------------------------------ Simulador completo y reproducción

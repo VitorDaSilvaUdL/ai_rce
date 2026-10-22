@@ -126,6 +126,24 @@ def test_pin_accepts_letters_digits_and_symbols(client):
     assert client.post("/api/people", json={"name": "Marc", "pin": "x" * 33}).status_code == 422       # too long
 
 
+def test_quick_simulator_follows_the_policy_of_the_control(client):
+    login(client)
+    r = client.post("/api/simulate", json={"now": "2026-10-20T09:30", "state": "Parada", "answer": "si", "frame": "cold"})
+    assert r.status_code == 200 and r.json()["next_state"] == "ColdMode1"
+
+
+def test_manual_is_served_and_covers_every_tab(client):
+    import re
+    assert client.get("/static/manual.html").status_code == 200
+    m = client.get("/static/manual.json").json()
+    page = client.get("/").text
+    tabs = re.findall(r'<button data-tab="[a-z]+"[^>]*>([^<]+)</button>', page)
+    assert tabs and m["tabs"] == tabs
+    assert set(tabs) <= {s["tab"] for s in m["sections"] if s["tab"]}
+    assert 'href="/static/manual.html"' in page
+    assert "PID2023-146193OB-I00" in m["acknowledgment"]
+
+
 def test_login_required_for_the_api(client):
     assert client.get("/api/status").status_code == 401
     client.post("/api/setup", json={"name": "Albert", "pin": "1234"})

@@ -141,6 +141,7 @@ class SimulateRequest(BaseModel):
     state: str
     answer: str
     alarm: bool = False
+    frame: str = "cold"      # mode of the planned frame when the answer is «sí»
 
 
 class SimulateFullRequest(BaseModel):
@@ -472,6 +473,13 @@ def create_app(ctx: PanelContext) -> FastAPI:
         return {"ok": True, "control": state_io.read_control(ctx.state_dir)}
 
     # --- simulator
+    def _control_policy():
+        try:
+            cfg = json.loads(Path(ctx.sc_config_path).read_text(encoding="utf-8"))
+        except (OSError, ValueError, TypeError):
+            cfg = {}
+        return (cfg.get("control") or {}).get("next_state_policy", "frame_mode")
+
     @app.post("/api/simulate")
     def post_simulate(body: SimulateRequest, request: Request):
         require_user(request)
@@ -480,7 +488,7 @@ def create_app(ctx: PanelContext) -> FastAPI:
             raise HTTPException(422, "Fecha y hora no válidas (AAAA-MM-DDTHH:MM)")
         status = readers.read_status(ctx.state_dir, datetime.now()) or {}
         schedule = status.get("schedule") or DEFAULT_SCHEDULE
-        return simulator.quick(when, body.state, body.answer, body.alarm, schedule)
+        return simulator.quick(when, body.state, body.answer, body.alarm, schedule, frame=body.frame, policy=_control_policy())
 
     @app.post("/api/simulate_full")
     def post_simulate_full(body: SimulateFullRequest, request: Request):

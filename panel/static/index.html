@@ -19,6 +19,7 @@
   <div class="top-user">
     <span id="lock-chip" class="chip" title="Quién tiene el mando">Nadie al mando</span>
     <button id="btn-lock" class="btn small">Tomar el mando</button>
+    <a class="btn small ghost" href="/static/manual.html" target="_blank" rel="noopener" title="Cómo usar el panel y leer sus datos">Manual</a>
     <span id="user-chip" class="chip user">—</span>
     <button id="btn-logout" class="btn small ghost">Salir</button>
   </div>
@@ -67,6 +68,7 @@
     <button id="btn-start" class="btn huge ok">▶ Arrancar</button>
     <button id="btn-stop" class="btn huge danger">■ Parar</button>
     <button id="btn-restart" class="btn huge">↻ Reiniciar</button>
+    <button id="btn-fb-restart" class="btn" hidden>↻ Reiniciar envío a Kibana</button>
     <div class="muted" id="sup-info"></div>
   </div>
 
@@ -168,6 +170,10 @@
           <label><input type="radio" name="sim-answer" value="si" checked> Sí (cambiar)</label>
           <label><input type="radio" name="sim-answer" value="no"> No (mantener)</label>
           <label><input type="radio" name="sim-answer" value="parada"> Parada</label>
+        </fieldset>
+        <fieldset><legend>Franja planificada activa (cuenta si la IA dice «sí»)</legend>
+          <label><input type="radio" name="sim-frame" value="cold" checked> Frío</label>
+          <label><input type="radio" name="sim-frame" value="hot"> Calor</label>
         </fieldset>
         <label class="switch"><input type="checkbox" id="sim-alarm"> <span>Alarma de lluvia o viento activa</span></label>
         <button class="btn ok" type="submit">Calcular</button>

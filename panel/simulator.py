@@ -2,11 +2,13 @@
 
 Given the date and hour, the current RCE state, the rain/wind alarm and the answer of the AI (si / no / parada),
 it returns the next state, the mode, the cover position, pumps and valves, and the reasons in plain language. It
-uses the real decision code (PLCController.decide_next_state_from_nn through PLCShadow) with the configured
-schedule, so it answers exactly what the control would do. The full level (with the prediction model) is phase 2.
+uses the real decision code of the control (sc.decision.next_state with the configured policy; with the original
+policy, PLCController.decide_next_state_from_nn through PLCShadow and the configured schedule), so it answers what the
+control would do. The full level, with the prediction model, is panel.simfull.
 """
 from sc.plc_shadow import PLCShadow, DEFAULT_SCHEDULE
 from sc.cycle_log import state_outputs, MODE_OF_STATE
+from sc.decision import STATE_OF_FRAME_MODE
 
 STATE_ES = {"ColdMode1": "modo frío", "ColdMode2": "modo frío", "HeatMode1": "modo calor", "HeatMode2": "modo calor",
             "Parada": "parada", "AutomaticMode": "automático", None: "sin estado conocido"}
@@ -25,15 +27,23 @@ def slot_of(now, schedule):
     return "frío"
 
 
-def quick(now, state, answer, alarm=False, schedule=None):
+def quick(now, state, answer, alarm=False, schedule=None, frame=None, policy="frame_mode"):
+    """frame: mode of the active planned frame ("cold" / "hot"), used by the default policy when the answer is «sí»
+    (the control only answers «sí» inside a planned frame). policy="toggle": the original state machine."""
     plc = PLCShadow(initial_state=state, schedule=schedule or DEFAULT_SCHEDULE)
     sched = plc.schedule
     answer = (answer or "").strip().lower()
-    next_state = plc.decide_next_state_from_nn(answer, state, now=now)
+    frame = frame if frame in STATE_OF_FRAME_MODE else "cold"
+    by_frame = policy == "frame_mode" and answer in ("si", "yes") and state != "AutomaticMode"
+    next_state = STATE_OF_FRAME_MODE[frame] if by_frame else plc.decide_next_state_from_nn(answer, state, now=now)
     slot = slot_of(now, sched)
     outputs = state_outputs(next_state, alarm=alarm)
     reasons = []
-    if answer in ("si", "yes"):
+    if by_frame:
+        kind = "frío" if frame == "cold" else "calor"
+        reasons.append(f"La IA dice «sí» en una franja planificada de {kind}: pasa a modo {kind}"
+                       + ("" if next_state != state else " (ya lo estaba)"))
+    elif answer in ("si", "yes"):
         if state in ("ColdMode1", "ColdMode2", "HeatMode1", "HeatMode2"):
             reasons.append(f"La IA dice «sí»: estaba en {STATE_ES[state]} y pasa a {STATE_ES[next_state]}")
         elif state == "AutomaticMode":
@@ -60,5 +70,5 @@ def quick(now, state, answer, alarm=False, schedule=None):
         "next_state": next_state, "changed": next_state != state,
         "plc_mode": outputs["plc_mode"], "cover": outputs["cover"],
         "pumps": {"b1": outputs["pump_b1"], "b2": outputs["pump_b2"], "ev1": outputs["ev1"], "ev2": outputs["ev2"]},
-        "reasons": reasons, "slot": slot, "schedule": sched,
+        "reasons": reasons, "slot": slot, "schedule": sched, "frame": frame, "policy": policy,
     }
