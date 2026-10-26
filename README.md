@@ -156,7 +156,8 @@ seco (`panel/dryrun.py`: la secuencia exacta de escrituras que haría el PLC, si
 `"https": false` en `state/panel_config.json` vuelve a HTTP). La potencia de la bomba y el COP mínimo se cambian en
 caliente desde Ajustes (`rce_admin`): el panel los guarda en `state/control_params.json` y el control los lee al empezar
 cada ciclo; sin valor en el panel se usan `pump.power_watts` de `sc/config.*.json` (16 W en el laboratorio, aproximado:
-la unidad A consumía 15,7–16,2 W con 1,8 L/min en diciembre de 2025) y `decision.COP_MIN_DEFAULT` (1). Especificación: `rce_review/panel_rce/ESPECIFICACION_panel_rce.md` del
+mediana con la bomba en marcha de la fase L1 «Bomba» del contador de energía, 16,8 W en A y 15,4 W en B, del 26/11 al
+18/12/2025; la potencia nominal de las bombas no está documentada) y `decision.COP_MIN_DEFAULT` (1). Especificación: `rce_review/panel_rce/ESPECIFICACION_panel_rce.md` del
 repositorio de trabajo. Instalación en el PC del laboratorio: `deploy/install_shadow_lab.ps1` (ai_rce en sombra) y
 después `deploy/install_panel.ps1` (tarea programada `RCE-Panel`, puerto 8050, acceso directo «Panel RCE»).
 Para actualizar un PC que ya tiene el panel, después de `git pull --ff-only`: `deploy/update_lab.ps1` (un solo
