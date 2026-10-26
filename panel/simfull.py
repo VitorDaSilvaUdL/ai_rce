@@ -143,7 +143,14 @@ def _outcome(d, state, now, alarm, schedule, policy="frame_mode"):
     return nxt, out
 
 
-def simulate(now, readings, overrides, state, alarm, predict, schedule=None, demand_j=None):
+def _pump(params):
+    """PUMP con la potencia de la bomba y el COP mínimo vigentes (los del panel), si se dan."""
+    if not params:
+        return PUMP
+    return {**PUMP, "p_bomba_watts": params["pump_power_w"], "cop_min": params["cop_min"]}
+
+
+def simulate(now, readings, overrides, state, alarm, predict, schedule=None, demand_j=None, params=None):
     samples = samples_from_readings(readings, end=now, overrides=overrides)
     req = predict(samples)
     if not req or "info" not in req:
@@ -155,7 +162,7 @@ def simulate(now, readings, overrides, state, alarm, predict, schedule=None, dem
     temp_mode = {**other["temp_mode"], **plan["temp_mode"]}        # the control keeps frames of both plans
     demand = plan["target_j"] if demand_j is None else float(demand_j)
     d = decide(now, temp_mode, info["energy-production"], demand, plan["total_j"], action_prev=0,
-               mode_prev=kind, rng=lambda a, b: 1.0, **PUMP)
+               mode_prev=kind, rng=lambda a, b: 1.0, **_pump(params))
     next_state, out = _outcome(d, state, now, alarm, schedule)
     inputs = {k: v for k, v in samples["data"][-1].items() if k in SAMPLE_VARS}
     return {
@@ -173,7 +180,7 @@ def simulate(now, readings, overrides, state, alarm, predict, schedule=None, dem
 
 
 # ----------------------------------------------------------------------------------------------- replay
-def replay_day(day, readings, state0, predict, schedule=None):
+def replay_day(day, readings, state0, predict, schedule=None, params=None):
     """96 control cycles of one day driven by the measured readings: forecast at 00:00 (initial heat plan, as the
     control does when it starts), re-plan at 07:00 (heat) and 19:00 (cold), decide() every 15 min."""
     if isinstance(day, datetime):
@@ -203,7 +210,7 @@ def replay_day(day, readings, state0, predict, schedule=None):
         elif t.hour == 19 and t.minute == 0:
             replan(t, "cold")
         d = decide(t, temp_mode, info["info"]["energy-production"], demand, total, action_prev=action,
-                   mode_prev=mode, rng=lambda a, b: 1.0, **PUMP)
+                   mode_prev=mode, rng=lambda a, b: 1.0, **_pump(params))
         action, mode, demand = d.action, d.mode, d.demand_after
         if d.plan_reset:
             total = 0.0

@@ -22,6 +22,7 @@ from panel.auth import ADMIN, VIEWER, Lock, People, Sessions, role_of, user_id
 from panel.journal import ACTIONS_HEADER, CATEGORIES, category_of
 from panel.config import EXIT_STATES
 from panel.journal import Actions, Diary, DIARY_KINDS, OPERATIONS
+from sc import decision as sc_decision
 from sc import state_io
 from sc.plc_shadow import DEFAULT_SCHEDULE
 
@@ -204,6 +205,12 @@ class Settings(BaseModel):
     autostart: Optional[bool] = None
     refresh_s: Optional[int] = Field(default=None, ge=3, le=120)
     plc_read_allowed: Optional[bool] = None
+
+
+class ParamsRequest(BaseModel):
+    pump_power_w: Optional[float] = None
+    cop_min: Optional[float] = None
+    reset: bool = False
 
 
 class ModeRequest(BaseModel):
@@ -617,7 +624,7 @@ def create_app(ctx: PanelContext) -> FastAPI:
         t0 = datetime.now()
         try:
             result = simfull.simulate(now, rs, overrides, body.state, body.alarm, ctx.predict, schedule,
-                                      demand_j=body.demand_kwh * 3.6e6 if body.demand_kwh is not None else None)
+                                      demand_j=body.demand_kwh * 3.6e6 if body.demand_kwh is not None else None, params=params_view()["effective"])
         except Exception as e:
             raise HTTPException(503, f"No se ha podido obtener la previsión del modelo: {e}")
         log_action(u, "simulate_full", duration_s=(datetime.now() - t0).total_seconds())
@@ -635,7 +642,7 @@ def create_app(ctx: PanelContext) -> FastAPI:
         rs = ctx.readings(hours=24 * 8, max_bytes=20_000_000)
         t0 = datetime.now()
         try:
-            result = simfull.replay_day(day, rs, body.state, ctx.predict, schedule)
+            result = simfull.replay_day(day, rs, body.state, ctx.predict, schedule, params=params_view()["effective"])
         except ValueError as e:
             raise HTTPException(422, str(e))
         except Exception as e:
@@ -806,6 +813,50 @@ def create_app(ctx: PanelContext) -> FastAPI:
         ctx.config.set(**fields)
         log_action(u, "settings:" + ",".join(f"{k}={v}" for k, v in fields.items()))
         return {"ok": True, **ctx.config.all()}
+
+    # --- parámetros del control en caliente: potencia de la bomba y COP mínimo (state/control_params.json)
+    def params_view():
+        from sc import config as sc_config
+        stored = state_io.read_params(ctx.state_dir)
+        defaults = {"pump_power_w": float(sc_config.P_BOMBA_WATTS), "cop_min": sc_decision.COP_MIN_DEFAULT}
+        eff = sc_decision.effective_params(stored, defaults["pump_power_w"], defaults["cop_min"])
+        return {"stored": stored, "defaults": defaults, "effective": eff,
+                "limits": {"pump_power_w": list(sc_decision.PUMP_POWER_LIMITS_W), "cop_min": list(sc_decision.COP_MIN_LIMITS)}}
+
+    @app.get("/api/params")
+    def get_params(request: Request):
+        require_user(request)
+        return params_view()
+
+    @app.post("/api/params")
+    def post_params(body: ParamsRequest, request: Request):
+        u = require_user(request)
+        require_admin(u)
+        require_lock(u)
+        before = params_view()["effective"]
+        stamp = {"updated_by": u["name"], "updated_at": datetime.now().replace(microsecond=0).isoformat(sep=" ")}
+        if body.reset:
+            state_io.write_params(ctx.state_dir, pump_power_w=None, cop_min=None, **stamp)
+        else:
+            lo, hi = sc_decision.PUMP_POWER_LIMITS_W
+            if body.pump_power_w is not None and not lo < body.pump_power_w <= hi:
+                raise HTTPException(422, f"Potencia de la bomba fuera de rango (más de {lo:g} y hasta {hi:g} W)")
+            lo, hi = sc_decision.COP_MIN_LIMITS
+            if body.cop_min is not None and not lo <= body.cop_min <= hi:
+                raise HTTPException(422, f"COP mínimo fuera de rango ({lo:g} a {hi:g})")
+            fields = {k: v for k, v in (("pump_power_w", body.pump_power_w), ("cop_min", body.cop_min)) if v is not None}
+            if not fields:
+                raise HTTPException(422, "Nada que cambiar")
+            state_io.write_params(ctx.state_dir, **fields, **stamp)
+        view = params_view()
+        after = view["effective"]
+        text = (f"Parámetros del control: bomba {before['pump_power_w']:g} → {after['pump_power_w']:g} W "
+                f"({after['source']['pump_power_w']}), COP mínimo {before['cop_min']:g} → {after['cop_min']:g} "
+                f"({after['source']['cop_min']}). Se aplican desde el próximo ciclo.")
+        ctx.diary.add(author=u["name"], kind="sistema", host=u.get("host", ""), text=text)
+        log_action(u, f"control:parametros:bomba={after['pump_power_w']:g}W,cop_min={after['cop_min']:g}"
+                      + (",reset" if body.reset else ""))
+        return view
 
     @app.post("/api/real-password")
     def post_real_password(body: RealPasswordRequest, request: Request):

@@ -46,7 +46,7 @@ url = PREDICT_URL
 P_bomba_watts = P_BOMBA_WATTS  # Potència de la bomba en Watts (W)
 min_time_step = MIN_TIME_STEP # Durada del time_step en minuts
 time_step_hours = int(ITER_TIME_SEC) / 60  # Durada del time_step en hores per al càlcul d'energia
-COP_MIN = 1.0 # Umbral mínimo de COP para encender la bomba
+COP_MIN = decision.COP_MIN_DEFAULT  # Umbral mínimo de COP para encender la bomba (el panel puede fijar otro)
 
 # plc = PLCController(ip=PLC_IP, rack=PLC_RACK, slot=PLC_SLOT)
 
@@ -54,6 +54,8 @@ prod_data = {}
 dem_data = {}
 rain_data = {}
 temp_mode = {}
+control_params = {}        # state/control_params.json, leído al empezar cada ciclo (potencia de la bomba, COP mínimo)
+last_params = None         # los valores efectivos del último ciclo (para status.json)
 
 system_data = {}
 
@@ -334,7 +336,10 @@ def plan_mode(
 def get_decision():
     global system_data, last_prediction_update_day, total_predicted_production
     global selected_time_frames, current_dem_target, dem_data, prod_data
-    global action, mode, last_decision_row, last_decision
+    global action, mode, last_decision_row, last_decision, last_params
+    # Potencia de la bomba y COP mínimo: los del panel si los hay (state/control_params.json), si no los de config
+    params = decision.effective_params(control_params, P_bomba_watts, COP_MIN)
+    last_params = params
 
     now = datetime.now().replace(microsecond=0)
     last_decision_row = None
@@ -412,8 +417,8 @@ def get_decision():
 
         # 5) Lògica d'acció en temps real (sc/decision.py: la misma lógica, con motivos para el panel)
         d = decision.decide(now, temp_mode, prod_data, current_dem_target, total_predicted_production,
-                            action_prev=action, mode_prev=mode, p_bomba_watts=P_bomba_watts,
-                            time_step_hours=time_step_hours, min_time_step=min_time_step, cop_min=COP_MIN,
+                            action_prev=action, mode_prev=mode, p_bomba_watts=params["pump_power_w"],
+                            time_step_hours=time_step_hours, min_time_step=min_time_step, cop_min=params["cop_min"],
                             rng=random.uniform, pump_energy_units=COP_PUMP_ENERGY_UNITS,
                             frame_key_format=FRAME_KEY_FORMAT, demand_adjust=DEMAND_ADJUST)
         last_decision = d
@@ -432,9 +437,9 @@ def get_decision():
                 logger.info(f"{now}: Energia consumida per la bomba en aquesta franja: {d.pump_energy_wh:.2f} Wh{joules}.")
                 logger.info(f"{now}: COP calculat: {d.cop:.2f}.")
             elif code == "cop_ok":
-                logger.info(f"{now}: COP >= {COP_MIN} i hi ha demanda. Bomba ON (action=1). Ttank = 1.")
+                logger.info(f"{now}: COP >= {params['cop_min']} i hi ha demanda. Bomba ON (action=1). Ttank = 1.")
             elif code in ("cop_low", "no_demand_in_frame"):
-                logger.info(f"{now}: COP < {COP_MIN} o no hi ha demanda. Bomba OFF (action=0).")
+                logger.info(f"{now}: COP < {params['cop_min']} o no hi ha demanda. Bomba OFF (action=0).")
             elif code == "out_of_frames":
                 logger.info(f"{now}: Hora actual fora de franges seleccionades. Bomba OFF.")
             elif code == "demand_adjusted":
@@ -526,6 +531,9 @@ def build_status(plc, now, estado_actual, nuevo_estado, applied_state, control, 
         },
         "plan": {"target_demand_j": current_dem_target, "selected_frames": list(selected_time_frames),
                  "predicted_production_j": total_predicted_production},
+        "params": {**decision.effective_params(control_params, P_bomba_watts, COP_MIN),
+                   "updated_by": (control_params or {}).get("updated_by", ""),
+                   "updated_at": (control_params or {}).get("updated_at", "")},
         "decision": {
             **(last_decision.as_dict() if last_decision else {"reasons": [], "codes": []}),
             "action": dec.get("action", ""), "next_state": nuevo_estado,
@@ -585,7 +593,9 @@ def run_cycle(plc, out_path=OUTPUT_CSV_PATH, state_dir=state_io.STATE_DIR):
     apply_panel_orders(plc, state_dir)
     control = state_io.read_control(state_dir)
 
-    # 1) Obtener decision de la logica de control
+    # 1) Obtener decision de la logica de control, con los parámetros del panel de este momento
+    global control_params
+    control_params = state_io.read_params(state_dir)
     respuesta_nn = get_decision()
     respuesta_nn = respuesta_nn["respuesta"]
     logger.info(f"nn_result: {respuesta_nn}")

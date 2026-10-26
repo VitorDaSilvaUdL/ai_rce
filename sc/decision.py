@@ -19,6 +19,27 @@ from dataclasses import dataclass, field, asdict
 from datetime import datetime, timedelta
 
 LABELS = {0: "no", 1: "si", 2: "parada"}
+COP_MIN_DEFAULT = 1.0                     # umbral de COP para arrancar la bomba si el panel no fija otro
+PUMP_POWER_LIMITS_W = (0.0, 5000.0)       # (excluido, incluido)
+COP_MIN_LIMITS = (0.0, 1.0e6)             # (incluido, incluido)
+
+
+def effective_params(params, config_pump_w, config_cop_min=COP_MIN_DEFAULT):
+    """Potencia de la bomba (W) y COP mínimo con los que decide el control: los del panel (state/control_params.json)
+    si son números dentro de los límites; si no, los de la configuración. source dice de dónde sale cada uno."""
+    def num(v, ok):
+        try:
+            x = float(v)
+        except (TypeError, ValueError):
+            return None
+        return x if ok(x) else None
+    params = params or {}
+    pw = num(params.get("pump_power_w"), lambda x: PUMP_POWER_LIMITS_W[0] < x <= PUMP_POWER_LIMITS_W[1])
+    cm = num(params.get("cop_min"), lambda x: COP_MIN_LIMITS[0] <= x <= COP_MIN_LIMITS[1])
+    return {"pump_power_w": pw if pw is not None else float(config_pump_w),
+            "cop_min": cm if cm is not None else float(config_cop_min),
+            "source": {"pump_power_w": "panel" if pw is not None else "config",
+                       "cop_min": "panel" if cm is not None else "config"}}
 
 
 def kwh(j):

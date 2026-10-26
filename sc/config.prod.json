@@ -21,7 +21,7 @@
     }
   },
   "pump": {
-    "power_watts": 10,
+    "power_watts": 16,
     "min_time_step_minutes": 15,
     "cop_pump_energy_units": "J"
   },

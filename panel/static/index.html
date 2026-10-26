@@ -404,6 +404,12 @@
       <div class="row"><label class="switch"><input type="checkbox" id="set-autostart"> <span>Arrancar el control al encender el PC</span></label></div>
       <div class="row"><label>Refresco de la pantalla (s) <input type="number" id="set-refresh" min="3" max="120" style="width:80px;margin-left:8px"></label></div>
       <div class="row"><button class="btn ok" id="btn-settings-save">Guardar ajustes</button></div>
+      <h3>Parámetros del control (en caliente)</h3>
+      <p class="muted">Potencia eléctrica de la bomba y COP mínimo para arrancarla (COP = producción prevista de la franja / consumo de la bomba en 15 min). El control los lee al empezar cada ciclo: se aplican en el siguiente, sin reiniciar nada. También los usa el simulador.</p>
+      <div class="row"><label>Potencia de la bomba (W) <input type="number" id="par-pump" min="1" max="5000" step="1" style="width:100px;margin-left:8px"></label>
+        <label>COP mínimo <input type="number" id="par-cop" min="0" step="0.1" style="width:90px;margin-left:8px"></label></div>
+      <p class="muted" id="par-note"></p>
+      <div class="row"><button class="btn ok" id="btn-params-save">Guardar parámetros</button><button class="btn" id="btn-params-reset">Volver a los de la configuración</button></div>
     </div>
     <div class="card">
       <h2>Mi cuenta</h2>

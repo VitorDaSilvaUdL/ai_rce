@@ -594,7 +594,7 @@
       "cop": {
         "title": "En cada franja planificada, el control calcula el COP",
         "formula": "COP = producción prevista en la franja / consumo de la bomba",
-        "example": "Ejemplo: 0,05 kWh / 0,0025 kWh (bomba de 10 W durante 15 min) = 20. Es 1 o más y queda demanda → «sí».",
+        "example": "Ejemplo: 0,05 kWh / 0,004 kWh (bomba de 16 W durante 15 min) = 12,5. Es igual o mayor que el COP mínimo (1 por defecto) y queda demanda → «sí». La potencia de la bomba y el COP mínimo se cambian en Ajustes.",
         "reasons": [
           "Franja planificada de frío activa (22:00–22:15)",
           "Producción prevista en la franja: 0.05 kWh",
@@ -1059,6 +1059,10 @@
         [
           "Otros (rce_admin)",
           "Arrancar el control al encender el PC; cada cuántos segundos se refresca la pantalla."
+        ],
+        [
+          "Parámetros del control (rce_admin)",
+          "Potencia de la bomba (W) y COP mínimo: se aplican en el siguiente ciclo, sin reiniciar, y quedan en el diario y la auditoría. Por defecto 16 W (aproximado) y COP 1."
         ]
       ]
     },

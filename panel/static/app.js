@@ -459,11 +459,29 @@
     $("#btn-my-password").hidden = role === "viewer";
     $("#people-note").textContent = admin ? "Al dar de alta a alguien o cambiarle la contraseña, tendrá que cambiarla en su próxima entrada (salvo rce_viewer, que es compartida)." : "Solo rce_admin da de alta personas y cambia contraseñas de otros. La tuya: «Cambiar mi contraseña».";
     $("#people-form").hidden = !admin;
-    ["#btn-settings-save", "#btn-real-password"].forEach((id) => { $(id).disabled = !admin; $(id).title = admin ? "" : "Solo rce_admin"; });
+    ["#btn-settings-save", "#btn-real-password", "#btn-params-save", "#btn-params-reset"].forEach((id) => { $(id).disabled = !admin; $(id).title = admin ? "" : "Solo rce_admin"; });
+    loadParams();
     $("#people").innerHTML = s.people.map((p) => `<li><span>${esc(p)}</span>${p === me ? "<span class='muted'>tú</span>" : admin ? `<button class="btn small" data-del="${esc(p)}">Quitar</button>` : ""}</li>`).join("");
     $$("#people [data-del]").forEach((b) => b.addEventListener("click", async () => { if (confirm(`¿Quitar a ${b.dataset.del}?`)) { try { await api(`/api/people/${encodeURIComponent(b.dataset.del)}`, {method: "DELETE"}); loadSettings(); } catch (e) {} } }));
-    $("#info").innerHTML = [["Este PC", s.host], ["Carpeta de WinCC", s.wincc_dir], ["Dirección del panel", `http://${location.host}`], ["API de predicción", s.api_url]].map(([k, v]) => `<b>${esc(k)}</b><span>${esc(v)}</span>`).join("");
+    $("#info").innerHTML = [["Este PC", s.host], ["Carpeta de WinCC", s.wincc_dir], ["Dirección del panel", `${location.protocol}//${location.host}`], ["API de predicción", s.api_url]].map(([k, v]) => `<b>${esc(k)}</b><span>${esc(v)}</span>`).join("");
   }
+  const SRC_ES = {panel: "fijado en el panel", config: "de la configuración"};
+  function renderParams(p) {
+    const e = p.effective, st = p.stored || {};
+    $("#par-pump").value = e.pump_power_w; $("#par-cop").value = e.cop_min;
+    $("#par-note").textContent = `Vigentes: bomba ${fmtNum(e.pump_power_w, 0)} W (${SRC_ES[e.source.pump_power_w]}), COP mínimo ${fmtNum(e.cop_min, 2)} (${SRC_ES[e.source.cop_min]}). ` +
+      `Configuración: ${fmtNum(p.defaults.pump_power_w, 0)} W y ${fmtNum(p.defaults.cop_min, 2)}.` + (st.updated_by ? ` Último cambio: ${st.updated_by}, ${fmtTs(st.updated_at)}.` : "");
+  }
+  async function loadParams() { try { renderParams(await api("/api/params")); } catch (e) {} }
+  $("#btn-params-save").addEventListener("click", async () => {
+    const pump = +$("#par-pump").value, cop = +$("#par-cop").value;
+    if (!confirm(`¿Bomba ${pump} W y COP mínimo ${cop}? El control los usará desde el próximo ciclo (se anota en el diario y la auditoría).`)) return;
+    try { renderParams(await post("/api/params", {pump_power_w: pump, cop_min: cop})); toast("Parámetros guardados: se aplican en el próximo ciclo", "ok"); } catch (e) {}
+  });
+  $("#btn-params-reset").addEventListener("click", async () => {
+    if (!confirm("¿Volver a la potencia de la bomba y el COP mínimo de la configuración?")) return;
+    try { renderParams(await post("/api/params", {reset: true})); toast("Parámetros de la configuración", "ok"); } catch (e) {}
+  });
   $("#btn-settings-save").addEventListener("click", async () => {
     try { await post("/api/settings", {exit_state: $("#set-exit").value, autostart: $("#set-autostart").checked, refresh_s: +$("#set-refresh").value, plc_read_allowed: $("#set-plcread").checked}); toast("Ajustes guardados", "ok"); } catch (e) {}
   });

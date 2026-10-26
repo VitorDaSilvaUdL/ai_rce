@@ -15,6 +15,9 @@ STATUS_NAME = "status.json"
 CONTROL_NAME = "control.json"
 
 CONTROL_DEFAULTS = {"paused": False, "paused_by": "", "since": "", "set_state": None, "set_state_seq": 0}
+# Parámetros del control que el panel cambia en caliente (sc los lee al empezar cada ciclo). None = el de sc/config.
+PARAMS_NAME = "control_params.json"
+PARAMS_DEFAULTS = {"pump_power_w": None, "cop_min": None, "updated_by": "", "updated_at": ""}
 
 
 def write_json_atomic(path, data):
@@ -47,6 +50,18 @@ def write_control(state_dir=STATE_DIR, **fields):
     current = read_control(state_dir)
     current.update(fields)
     write_json_atomic(Path(state_dir) / CONTROL_NAME, current)
+    return current
+
+
+def read_params(state_dir=STATE_DIR):
+    data = read_json(Path(state_dir) / PARAMS_NAME, {}) or {}
+    return {**PARAMS_DEFAULTS, **{k: v for k, v in data.items() if k in PARAMS_DEFAULTS}}
+
+
+def write_params(state_dir=STATE_DIR, **fields):
+    current = read_params(state_dir)
+    current.update({k: v for k, v in fields.items() if k in PARAMS_DEFAULTS})
+    write_json_atomic(Path(state_dir) / PARAMS_NAME, current)
     return current
 
 
